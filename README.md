@@ -7,7 +7,7 @@ Este firmware ya **no tiene credenciales en el código**. El Wi-Fi, las claves d
 - un **portal web** propio (red `Raulcito-Setup`), o
 - **Bluetooth (BLE)** con la app gratuita **nRF Connect**.
 
-Una vez conectado, el robot ofrece un **panel de control** en `http://raulcito.local`.
+Una vez conectado, el robot se controla desde **internet** en **https://raulcito-bracito.web.app** (desde cualquier lugar, con cuenta del equipo) y también desde un **panel local** de respaldo en `http://raulcito.local` (misma red Wi-Fi).
 
 > Alexa controla al ESP32 **por Wi-Fi, a través de SinricPro**, no por Bluetooth. El Bluetooth solo sirve para **configurar** el Wi-Fi y las claves desde el celular.
 
@@ -63,7 +63,16 @@ Incluidas en el core esp32 3.3.12 (no se instalan aparte): `WiFi`, `WebServer`, 
 | `config.h / config.cpp` | Lee, guarda, borra y valida la configuración en la NVS (`Preferences`) |
 | `portal.h / portal.cpp` | Servidor web, portal cautivo (DNS), API JSON, PIN y buffer de los últimos 20 eventos |
 | `ble_setup.h / ble_setup.cpp` | Servicio GATT de configuración por BLE (NimBLE) |
-| `web_ui.h` | Página única (HTML, CSS y JS embebidos, unos 20 KB, sin CDNs) |
+| `nube.h / nube.cpp` | Conexión con la página de internet (Firebase): sube el estado, recibe órdenes y configuración |
+| `web_ui.h` | Página del panel local (HTML, CSS y JS embebidos, unos 20 KB, sin CDNs) |
+
+### Archivos de la página de internet (raíz del repo)
+
+| Archivo | Qué hace |
+|---|---|
+| `pagina_web/` | La página publicada en Firebase Hosting (`index.html`, `css/`, `js/app.js`) |
+| `database.rules.json` | Reglas de seguridad de la base de datos (quién puede leer o escribir cada cosa) |
+| `firebase.json`, `.firebaserc` | Configuración del proyecto Firebase `raulcito-bracito` |
 
 ### Compilar y subir
 
@@ -99,7 +108,7 @@ Ten a la mano los datos de SinricPro (en [sinric.pro](https://sinric.pro), secci
 5. Revisa el **nombre del robot** (por defecto `raulcito-01`) y la **URL de la API**, por ejemplo `http://192.168.1.10/raulcito/guardar.php`.
 6. Captura **APP_KEY**, **APP_SECRET** y los **3 Device IDs**. Si dejas vacío SinricPro, el robot funciona sin Alexa.
 7. Toca **Guardar y conectar**. El ESP32 guarda todo en la NVS y se reinicia. El LED parpadea rápido mientras se conecta y queda **fijo** cuando ya está conectado.
-8. Conecta el celular a tu red normal y abre **http://raulcito.local**.
+8. Conecta el celular a tu red normal y abre **http://raulcito.local**. Para controlarlo desde cualquier lugar, vincúlalo a la página de internet (sección 4).
 
 Mientras el robot está en modo configuración, la página también muestra los sensores y los botones, así que puedes probar el hardware sin tener Wi-Fi.
 
@@ -155,7 +164,71 @@ Notas:
 
 ---
 
-## 4. Panel de control
+## 4. Página de internet: https://raulcito-bracito.web.app
+
+Desde aquí se hace todo, en cualquier lugar: ver los sensores en vivo, mandar comandos, revisar los eventos, cambiar la configuración de SinricPro y administrar quién entra.
+
+```
+ Celular / compu (cualquier lugar)            ESP32 (en casa o en la escuela)
+ raulcito-bracito.web.app  ◄──►  Firebase  ◄──►  sube su estado cada 1 s y
+ sensores · botones · eventos    (nube)          ejecuta las órdenes que llegan
+ · configuración · equipo
+```
+
+### Entrar por primera vez
+
+1. Abre **https://raulcito-bracito.web.app** y toca **Crear una** cuenta, con tu correo y una contraseña.
+2. Abre el correo de verificación que te llega (revisa spam) y luego toca **Ya verifiqué**.
+3. Solo entran los correos que están en el **Equipo**. Ya están dados de alta como administradores `david.rvrcls@gmail.com` y `andre.riverac@uanl.edu.mx`.
+4. Para agregar a tus compañeros, ve a **Equipo → Agregar persona**, escribe su correo y marca *Administrador* si también podrá vincular el robot y agregar gente. Después, cada quien crea su cuenta con ese correo.
+
+### Vincular el robot (una sola vez)
+
+El robot no lleva contraseñas de Firebase en el código: la primera vez que se conecta a internet **se crea su propia cuenta** y pide permiso con un **código de 6 dígitos**.
+
+1. Configura el Wi-Fi del robot (sección 3).
+2. Ya conectado, el robot muestra el código en el **Monitor Serie**:
+   ```
+   [NUBE] Esperando vinculación desde https://raulcito-bracito.web.app · código 482193
+   ```
+   El código también aparece en `http://raulcito.local`, en *Conexión → Página web*.
+3. En la página aparece la tarjeta **Vincular robot** con el mismo código. Si coincide, toca **Vincular**.
+4. En unos segundos el indicador cambia a **En línea**.
+
+Si restableces de fábrica, el robot **conserva su cuenta** y no hay que volver a vincularlo. Para cambiar de robot, vincula el nuevo (reemplaza al anterior) o usa *Configuración → Desvincular robot*.
+
+### Qué se puede hacer
+
+- **En vivo:** distancia, movimiento, luz, modo limpieza, brazo, último mensaje del Arduino, Wi-Fi y señal del robot, estado de SinricPro. Si el robot deja de mandar datos más de 8 s, la página lo marca **Desconectado** y desactiva los botones.
+- **Botones:** *Iniciar/Detener limpieza*, *Recoger ahora*, *Reposo*, *Ping*. El robot confirma cada orden y la página muestra "Listo" o el error, por ejemplo "El brazo está ocupado". Las órdenes desde la página quedan registradas como tipo `web` y también se avisan a Alexa.
+- **Configuración:** nombre, URL de la API, APP_KEY / APP_SECRET y Device IDs. Al guardar, el robot recibe los cambios, los guarda y se reinicia (unos 20 s). Las claves **no se pueden volver a leer** desde la página: si dejas los campos vacíos, se conservan.
+- **La página manda:** si cambias algo en el panel local o por BLE, el robot lo sube a la página al reconectarse; pero si la página tiene otro valor guardado, gana el de la página.
+- **Lo que no se puede cambiar desde internet:** el Wi-Fi y el PIN del panel local. Si el robot no tiene Wi-Fi, tampoco tiene internet, así que eso se hace en el robot (portal `Raulcito-Setup`, BLE o `raulcito.local`).
+
+### Proyecto Firebase
+
+- **Proyecto:** `raulcito-bracito` (plan gratuito Spark), en la cuenta `david.rvrcls@gmail.com`. Usa Realtime Database, Authentication (correo y contraseña) y Hosting.
+- **Publicar cambios de la página o de las reglas** (desde la raíz del repo):
+  ```bash
+  firebase deploy --only hosting      # la página
+  firebase deploy --only database     # las reglas
+  ```
+- **Datos que maneja:**
+
+  | Ruta | Escribe | Lee |
+  |---|---|---|
+  | `robot/estado`, `robot/eventos`, `robot/respuesta` | el robot | el equipo |
+  | `robot/ordenes/comando`, `robot/ordenes/config` | el equipo | el robot y el equipo |
+  | `robot/ordenes/secretos` (APP_KEY, APP_SECRET) | el equipo y el robot | **solo el robot** |
+  | `equipo`, `dispositivo`, `solicitudes` | administradores | el equipo / administradores |
+
+  La `apiKey` que aparece en `pagina_web/js/firebase-config.js` y en `nube.cpp` **no es secreta**: Firebase la usa para identificar el proyecto. Quién puede hacer qué lo deciden las reglas de `database.rules.json`.
+
+---
+
+## 5. Panel local (respaldo)
+
+Sirve en la misma red Wi-Fi del robot, aunque no haya internet.
 
 - **Dirección:** **http://raulcito.local**, o la IP que imprime el Monitor Serie al arrancar:
   ```
@@ -175,7 +248,7 @@ Notas:
 
 ---
 
-## 5. Restablecer de fábrica
+## 6. Restablecer de fábrica
 
 Tienes dos formas de hacerlo:
 
@@ -186,7 +259,7 @@ Tienes dos formas de hacerlo:
 
 ---
 
-## 6. Estados del Wi-Fi
+## 7. Estados del Wi-Fi
 
 ```mermaid
 stateDiagram-v2
@@ -214,7 +287,7 @@ SIN_CONFIG ──(sin red)──► AP/BLE ──(guardar)──► CONECTANDO �
 |---|---|---|
 | SIN_CONFIG | Arranque: lee la NVS | apagado |
 | CONECTANDO | Intenta la red guardada durante 20 s | parpadeo rápido |
-| CONECTADO | Panel, mDNS `raulcito.local`, SinricPro, registro HTTP | fijo |
+| CONECTADO | Página de internet, panel local `raulcito.local`, SinricPro, registro HTTP | fijo |
 | AP / BLE | Red `Raulcito-Setup` + portal cautivo en 192.168.4.1 + `Raulcito-BLE`. Sensores y Arduino siguen funcionando; no hay Alexa ni registro HTTP | parpadeo lento |
 
 - **Falla estando conectado:** si el Wi-Fi se pierde **20 s**, el ESP32 se reinicia. Así tiene una oportunidad más (por si el router solo se reinició); si sigue sin red, entra a modo AP.
@@ -223,7 +296,7 @@ SIN_CONFIG ──(sin red)──► AP/BLE ──(guardar)──► CONECTANDO �
 
 ---
 
-## 7. API JSON del ESP32
+## 8. API JSON del panel local
 
 Todas las rutas requieren el header **`X-PIN`**, excepto en modo AP. Las respuestas son JSON; los errores llegan como `{"ok":false,"error":"…"}`. Un PIN incorrecto da `401` y el bloqueo da `429`.
 
@@ -247,19 +320,21 @@ curl -X POST -H "X-PIN: 4821" -H "Content-Type: application/json" \
 
 ---
 
-## 8. Registro de eventos (`guardar.php`)
+## 9. Registro de eventos (`guardar.php`)
 
 - Se envía **el mismo JSON que antes**: `{"robot":"raulcito-01","tipo":"…","valor":"…","fecha":"AAAA-MM-DD HH:MM:SS"}`.
-- El envío corre en una **tarea aparte** (cola de 10 eventos, timeout de 3 s), así que el `loop()` **nunca se bloquea** esperando al servidor.
+- Cada evento va a tres lugares: el panel local, la página de internet (últimos 20) y `guardar.php`. Los envíos corren en **tareas aparte** (con timeout), así que el `loop()` **nunca se bloquea** esperando a un servidor.
 - Sin Wi-Fi (o en modo AP), el evento **solo se guarda en el buffer local** (los 20 que muestra el panel).
-- Tipos nuevos: `panel` (`limpieza_inicio`, `limpieza_fin`, `recoger`, `reposo`). Los demás no cambian: `sistema`, `alexa`, `ultrasonico`, `brazo`, `tapa`, `ldr`, `pir`, `error`.
-  > Si la columna `tipo` de `raulcito.sql` es un `ENUM`, agrégale el valor `panel` para que se guarden esas filas.
+- Tipos nuevos: `panel` (órdenes desde `raulcito.local`) y `web` (órdenes desde la página de internet), con los valores `limpieza_inicio`, `limpieza_fin`, `recoger` y `reposo`. Los demás no cambian: `sistema`, `alexa`, `ultrasonico`, `brazo`, `tapa`, `ldr`, `pir`, `error`.
+  > Si la columna `tipo` de `raulcito.sql` es un `ENUM`, agrégale los valores `panel` y `web` para que se guarden esas filas.
 
 ---
 
-## 9. Seguridad
+## 10. Seguridad
 
-- **Ninguna contraseña** sale por `/api/config` ni se imprime en el Monitor Serie. Tampoco se imprimen la APP_KEY, el APP_SECRET, el PIN ni la contraseña del AP.
+- **Página de internet:** solo entran cuentas con correo **verificado** que estén en el Equipo. Los administradores agregan o quitan gente y vinculan el robot. Las reglas de Firebase (`database.rules.json`) se aplican en el servidor, así que no se pueden saltar desde el navegador.
+- **Cuenta del robot:** el robot la crea solo, con una contraseña aleatoria guardada en su NVS (namespace `nube`), y solo funciona después de que un administrador la vincula. Las conexiones a Firebase usan HTTPS con verificación de certificados (`useBuiltinCACertBundle`).
+- **Ninguna contraseña** sale por `/api/config` ni se imprime en el Monitor Serie. Tampoco se imprimen la APP_KEY, el APP_SECRET, el PIN, la contraseña del AP ni la de la cuenta del robot.
 - La librería SinricPro imprime el APP_SECRET si tiene un formato inválido. Por eso el firmware **valida el formato antes** de llamar a `SinricPro.begin()`; si no es válido, desactiva Alexa sin imprimir nada.
 - Las credenciales se guardan en la NVS del ESP32 (namespace `raulcito`). El firmware usa `WiFi.persistent(false)` para que no queden copias en la NVS interna del Wi-Fi.
 - El PIN de 4 dígitos tiene bloqueo tras 5 intentos fallidos. El panel usa HTTP sin cifrar, así que **úsalo solo en tu red local**.
@@ -267,7 +342,7 @@ curl -X POST -H "X-PIN: 4821" -H "Content-Type: application/json" \
 
 ---
 
-## 10. Solución de problemas
+## 11. Solución de problemas
 
 | Problema | Solución |
 |---|---|
@@ -279,10 +354,14 @@ curl -X POST -H "X-PIN: 4821" -H "Content-Type: application/json" \
 | SinricPro dice "Sin configurar" | APP_KEY / APP_SECRET con formato inválido o sin Device IDs; revisa el Monitor Serie |
 | No veo `Raulcito-BLE` | El BLE solo está activo en modo configuración (LED con parpadeo lento) |
 | Olvidé el PIN | Restablece con BOOT 5 s y vuelve a configurar |
+| La página dice "Tu cuenta aún no tiene acceso" | Un administrador debe agregar tu correo en **Equipo**; luego toca *Volver a revisar* |
+| La página dice "Sin robot" y no aparece ningún código | El robot no tiene internet o no ha arrancado; revisa el Monitor Serie (`[NUBE] …`) |
+| La página dice "Desconectado" | El robot perdió internet o está apagado; la última señal aparece en el aviso amarillo |
+| Guardé la configuración y no cambió | El robot la aplica al reconectarse; si un valor es inválido, el Monitor Serie dice `[NUBE] Configuración de la página inválida` |
 
 ---
 
-## 11. Cambios respecto al firmware anterior
+## 12. Cambios respecto al firmware anterior
 
 - Se eliminaron los `#define` con credenciales; todo se lee de la NVS (`cfg.*`).
 - `registrar()` ya no bloquea: el envío HTTP pasó a una tarea con cola.
@@ -290,3 +369,4 @@ curl -X POST -H "X-PIN: 4821" -H "Content-Type: application/json" \
 - La hora se consulta sin esperar (antes cada consulta podía tardar 50 ms si no había NTP).
 - La distancia se mide siempre para mostrarla en el panel. La lógica de recoger no cambió: solo se dispara con la limpieza activa y el brazo libre.
 - Se desactivó el mDNS interno de SinricPro (`SINRICPRO_NOMDNS`) para que `raulcito.local` funcione.
+- Nuevo módulo `nube.cpp` y página `pagina_web/`: control desde internet con Firebase (estado cada 1 s, órdenes con confirmación, configuración y equipo).

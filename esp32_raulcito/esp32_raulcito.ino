@@ -3,6 +3,7 @@
 // Librerías: SinricPro, ArduinoJson 7, NimBLE-Arduino (versiones en README.md)
 // Wi-Fi, claves de SinricPro, URL de la API y PIN se capturan en el portal web
 // o por Bluetooth y se guardan en la NVS: ya no hay credenciales en el código.
+// Ya conectado, también se controla desde internet: https://raulcito-bracito.web.app
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
@@ -15,6 +16,7 @@
 #include "config.h"
 #include "portal.h"
 #include "ble_setup.h"
+#include "nube.h"
 
 // ---------- MODO CONFIGURACIÓN ----------
 #define AP_SSID   "Raulcito-Setup"
@@ -83,12 +85,13 @@ bool esNoche() {
   return t.tm_hour >= NOCHE_INICIO || t.tm_hour < NOCHE_FIN;
 }
 
-// Guarda un evento: buffer local (panel) + base de datos SQL (app web).
-// No bloquea: el envío HTTP lo hace tareaHttp(). Sin Wi-Fi solo queda en el buffer.
+// Guarda un evento: buffer local (panel), página de internet y base de datos SQL.
+// No bloquea: los envíos los hacen tareas aparte. Sin Wi-Fi solo queda en el buffer.
 void registrar(const String &tipo, const String &valor) {
   Serial.println("[LOG] " + tipo + " = " + valor);
   String fecha = fechaHora();
   portalEvento(tipo, valor, fecha);
+  nubeEvento(tipo, valor, fecha);
   if (!colaHttp || WiFi.status() != WL_CONNECTED) return;
   EventoHttp e;
   strlcpy(e.tipo, tipo.c_str(), sizeof(e.tipo));
@@ -182,12 +185,14 @@ void robotEstado(JsonObject o) {
   o["sinric_cfg"] = sinricActivo;
   o["sinric"] = sinricActivo && SinricPro.isConnected();
   o["hora"] = fechaHora();
+  o["nube"] = nubeEstadoTexto();
 }
 
-String robotComando(const String &cmd) {
+// origen: "panel" (raulcito.local) o "web" (página de internet)
+String robotComando(const String &cmd, const char *origen) {
   if (cmd == "LIMPIEZA_ON" || cmd == "LIMPIEZA_OFF") {
     bool on = cmd == "LIMPIEZA_ON";
-    cambiarLimpieza(on, "panel");
+    cambiarLimpieza(on, origen);
     if (sinricActivo && usaRobot) {          // Alexa queda sincronizada
       SinricProSwitch &robot = SinricPro[cfg.idRobot];
       robot.sendPowerStateEvent(on);
@@ -196,14 +201,14 @@ String robotComando(const String &cmd) {
   }
   if (cmd == "RECOGER") {
     if (esperandoBrazo) return "El brazo está ocupado";
-    registrar("panel", "recoger");
+    registrar(origen, "recoger");
     Serial2.println("RECOGER");
     esperandoBrazo = true;
     tBrazo = millis();
     return "";
   }
   if (cmd == "REPOSO") {
-    registrar("panel", "reposo");
+    registrar(origen, "reposo");
     Serial2.println("REPOSO");
     esperandoBrazo = false;
     return "";
@@ -341,6 +346,7 @@ void modoNormal() {
   xTaskCreatePinnedToCore(tareaHttp, "http", 8192, nullptr, 1, nullptr, 0);
 
   portalIniciar(false);
+  nubeIniciar();
   iniciarSinric();
   registrar("sistema", "encendido");
 }
@@ -421,6 +427,7 @@ void loop() {
     revisarReintentoAP();
   } else {
     if (sinricActivo) SinricPro.handle();
+    nubeLoop();
     revisarWifi();
   }
   leerArduino();

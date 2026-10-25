@@ -21,9 +21,10 @@ void configCargar() {
   p.end();
 }
 
-void configGuardar(const Config &c) {
+void configGuardar(const Config &c, bool desdeNube) {
   Preferences p;
   p.begin(NS, false);
+  p.putBool("subir", !desdeNube);
   p.putString("ssid", c.ssid);
   p.putString("pass", c.pass);
   p.putString("appKey", c.appKey);
@@ -45,6 +46,21 @@ void configBorrar() {
 }
 
 bool configHayWifi() { return cfg.ssid.length() > 0; }
+
+bool configSubirPendiente() {
+  Preferences p;
+  p.begin(NS, false);
+  bool subir = p.getBool("subir", false);
+  p.end();
+  return subir;
+}
+
+void configSubirHecho() {
+  Preferences p;
+  p.begin(NS, false);
+  p.putBool("subir", false);
+  p.end();
+}
 
 // ---------- VALIDACIONES (mismas reglas que usa la librería SinricPro) ----------
 static bool guionesEn(const String &s, std::initializer_list<int> posiciones) {

@@ -17,8 +17,10 @@ struct Config {
 extern Config cfg;                  // configuración activa (no cambia hasta reiniciar)
 
 void   configCargar();
-void   configGuardar(const Config &c);
+void   configGuardar(const Config &c, bool desdeNube = false);   // local = se sube a la página
 void   configBorrar();
+bool   configSubirPendiente();             // hay cambios locales que subir a la página
+void   configSubirHecho();
 bool   configHayWifi();                    // hay una red guardada
 bool   configSinricOk(const Config &c);    // APP_KEY y APP_SECRET con formato válido
 String configValidar(const Config &c);     // "" si todo bien; si no, el motivo

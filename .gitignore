@@ -1,6 +1,11 @@
 # Binarios que genera Arduino IDE ("Exportar binario compilado")
 build/
 
+# Caché y registros de Firebase CLI
+.firebase/
+firebase-debug.log
+database-debug.log
+
 # Archivos del sistema
 Thumbs.db
 desktop.ini

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#7a1e1e">
+<meta name="description" content="Panel en línea de Raulcito bracito: sensores en vivo, control del brazo y configuración.">
+<title>Raulcito bracito</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237a1e1e'/%3E%3Cpath d='M9 23h14M12 23v-5l5-6 4 3' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+<header>
+  <div><h1>Raulcito bracito</h1><small id="hSub">Panel en línea</small></div>
+  <div class="hder">
+    <span class="pill" id="hEstado">…</span>
+    <button type="button" class="salir oculto" id="bSalir">Salir</button>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="card centro" id="vCargando"><p class="nota">Cargando…</p></section>
+
+<section class="card angosta oculto" id="vLogin">
+  <h2 id="tLogin">Entrar</h2>
+  <p class="nota">Panel del robot del PIA de Robótica y Domótica. Solo para el equipo.</p>
+  <form id="fLogin" novalidate>
+    <label for="lCorreo">Correo</label>
+    <input id="lCorreo" type="email" autocomplete="email" required>
+    <label for="lClave">Contraseña</label>
+    <input id="lClave" type="password" autocomplete="current-password" minlength="6" required>
+    <p class="err" id="lErr"></p>
+    <button type="submit" class="full" id="bLogin" style="margin-top:14px">Entrar</button>
+  </form>
+  <div class="enlaces">
+    <button type="button" class="link" id="bModo">¿No tienes cuenta? Crear una</button>
+    <button type="button" class="link" id="bOlvide">Olvidé mi contraseña</button>
+  </div>
+</section>
+
+<section class="card angosta oculto" id="vVerificar">
+  <h2>Verifica tu correo</h2>
+  <p>Te enviamos un enlace a <b id="vCorreo"></b>. Ábrelo (revisa también spam) y luego toca «Ya verifiqué».</p>
+  <div class="btns">
+    <button type="button" id="bYaVerifique">Ya verifiqué</button>
+    <button type="button" class="alt" id="bReenviar">Reenviar correo</button>
+  </div>
+</section>
+
+<section class="card angosta oculto" id="vSinAcceso">
+  <h2>Tu cuenta aún no tiene acceso</h2>
+  <p>La cuenta <b id="saCorreo"></b> todavía no está en el equipo. Pide a un administrador que agregue tu correo en la sección «Equipo» del panel.</p>
+  <button type="button" class="full" id="bReintentar">Volver a revisar</button>
+</section>
+
+<div class="oculto" id="vPanel">
+  <div class="aviso oculto" id="avisoOff"></div>
+
+  <section class="card oculto" id="cVincular">
+    <h2>Vincular robot</h2>
+    <p class="nota" id="vinNota"></p>
+    <div id="solicitudes"></div>
+  </section>
+
+  <div class="rejilla">
+    <section class="card">
+      <h2>Sensores</h2>
+      <div class="k3">
+        <div class="kpi"><b id="sDist">–</b><span>Distancia (cm)</span></div>
+        <div class="kpi"><b id="sPir">–</b><span>Movimiento</span></div>
+        <div class="kpi"><b id="sLuz">–</b><span id="sLuzT">Luz</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Robot</h2>
+      <div class="fila"><span>Modo limpieza</span><span><span class="tag" id="rLimp">–</span></span></div>
+      <div class="fila"><span>Brazo</span><span id="rBrazo">–</span></div>
+      <div class="fila"><span>Último mensaje del Arduino</span><span id="rArd">–</span></div>
+      <div class="btns">
+        <button type="button" class="full" id="bLimp" data-cmd="LIMPIEZA_ON">Iniciar limpieza</button>
+        <button type="button" data-cmd="RECOGER">Recoger ahora</button>
+        <button type="button" class="alt" data-cmd="REPOSO">Reposo</button>
+        <button type="button" class="alt full" data-cmd="PING">Ping al Arduino</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Conexión del robot</h2>
+      <div id="conex"></div>
+    </section>
+
+    <section class="card">
+      <h2>Últimos eventos</h2>
+      <ul class="ev" id="evs"><li class="nota">Sin eventos todavía</li></ul>
+    </section>
+  </div>
+
+  <details class="card" id="dConfig">
+    <summary>Configuración</summary>
+    <form id="fCfg" novalidate>
+      <h3>Robot</h3>
+      <label for="cNombre">Nombre del robot</label>
+      <input id="cNombre" maxlength="32" placeholder="raulcito-01">
+      <label for="cUrl">URL de la API (guardar.php)</label>
+      <input id="cUrl" type="url" maxlength="200" placeholder="http://servidor/raulcito/guardar.php">
+
+      <h3>SinricPro (Alexa)</h3>
+      <label for="cKey">APP_KEY</label>
+      <input id="cKey" maxlength="36" autocomplete="off">
+      <label for="cSecret">APP_SECRET</label>
+      <input id="cSecret" type="password" maxlength="73" autocomplete="off">
+      <label for="cIdRobot">Device ID · Raulcito (Switch)</label>
+      <input id="cIdRobot" maxlength="24" autocomplete="off">
+      <label for="cIdPir">Device ID · Movimiento (Motion)</label>
+      <input id="cIdPir" maxlength="24" autocomplete="off">
+      <label for="cIdLdr">Device ID · Oscuridad (Contact)</label>
+      <input id="cIdLdr" maxlength="24" autocomplete="off">
+      <p class="nota" style="margin-top:12px">Las claves no se pueden volver a ver: si dejas APP_KEY y APP_SECRET vacíos se conservan las que ya tiene el robot. Al guardar, el robot aplica los cambios y se reinicia (unos 20 s).</p>
+      <p class="err" id="cErr"></p>
+      <button type="submit" class="full" id="bGuardar" style="margin-top:14px">Guardar en el robot</button>
+    </form>
+    <h3>Wi-Fi y PIN del panel local</h3>
+    <p class="nota" style="margin-top:8px">Por seguridad se cambian en el robot: en <b>http://raulcito.local</b> (misma red) o manteniendo BOOT 5 s y entrando a la red <b>Raulcito-Setup</b>.</p>
+    <div class="oculto" id="zDesvincular">
+      <h3>Robot vinculado</h3>
+      <p class="nota" style="margin-top:8px">Desvincular desconecta al robot de esta página hasta que lo vuelvas a vincular.</p>
+      <button type="button" class="peligro full" id="bDesvincular">Desvincular robot</button>
+    </div>
+  </details>
+
+  <details class="card" id="dEquipo">
+    <summary>Equipo</summary>
+    <p class="nota">Personas que pueden entrar a este panel. Cada quien crea su cuenta con su correo y la verifica.</p>
+    <ul class="equipo" id="lEquipo"></ul>
+    <form class="oculto" id="fEquipo" novalidate>
+      <h3>Agregar persona</h3>
+      <label for="eCorreo">Correo</label>
+      <input id="eCorreo" type="email" autocomplete="off" placeholder="compañero@uanl.edu.mx">
+      <label class="chk"><input type="checkbox" id="eAdmin">Administrador (puede agregar personas y vincular el robot)</label>
+      <p class="err" id="eErr"></p>
+      <button type="submit" class="full" style="margin-top:12px">Agregar</button>
+    </form>
+  </details>
+</div>
+
+</main>
+<footer>Raulcito bracito · PIA Robótica y Domótica · UANL</footer>
+<div id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

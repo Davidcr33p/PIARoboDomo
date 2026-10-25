@@ -153,6 +153,7 @@ ul.ev b{color:var(--g);font-weight:600}
     <input id="url" type="url" maxlength="200" placeholder="http://servidor/raulcito/guardar.php">
 
     <h3>SinricPro (Alexa)</h3>
+    <p class="nota" style="margin-top:8px">Si el robot está vinculado a raulcito-bracito.web.app, lo que se guarde allá tiene prioridad.</p>
     <label for="app_key">APP_KEY</label>
     <input id="app_key" maxlength="36" autocomplete="off">
     <label for="app_secret">APP_SECRET</label>
@@ -247,7 +248,7 @@ function pintar(s){
   $('rArd').textContent=s.arduino?s.arduino+' · hace '+seg(s.arduino_seg):'Sin mensajes';
   const w=s.wifi,f=[];
   if(s.modo=='ap')f.push(['Red de configuración',w.ap],['IP',w.ip],['Celulares conectados',w.clientes],['Bluetooth','Raulcito-BLE']);
-  else f.push(['Wi-Fi',w.ssid],['Señal',w.rssi+' dBm ('+calidad(w.rssi)+')'],['IP',w.ip],['SinricPro',s.sinric_cfg?(s.sinric?'Conectado':'Desconectado'):'Sin configurar',s.sinric_cfg?s.sinric:undefined],['Hora',s.hora||'Sin sincronizar']);
+  else f.push(['Wi-Fi',w.ssid],['Señal',w.rssi+' dBm ('+calidad(w.rssi)+')'],['IP',w.ip],['SinricPro',s.sinric_cfg?(s.sinric?'Conectado':'Desconectado'):'Sin configurar',s.sinric_cfg?s.sinric:undefined],['Hora',s.hora||'Sin sincronizar'],['Página web',s.nube||'—']);
   const cx=$('conex');cx.textContent='';
   f.forEach(([k,v,ok])=>{const d=el('div','fila'),b=el('span');d.appendChild(el('span','',k));
     if(ok===undefined)b.textContent=v;else{const t=el('span');tag(t,ok,v,v);b.appendChild(t)}
