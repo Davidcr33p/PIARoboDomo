@@ -1,0 +1,292 @@
+# Raulcito bracito: ESP32 con portal web y configuración por Bluetooth
+
+PIA de Robótica y Domótica (UANL). El **ESP32** es el cerebro del robot: lee los sensores, le manda órdenes al **Arduino Uno** (brazo y tapa del baúl), se conecta a **Alexa** mediante **SinricPro** y registra eventos en la base de datos (`guardar.php`).
+
+Este firmware ya **no tiene credenciales en el código**. El Wi-Fi, las claves de SinricPro, la URL de la API y el PIN del panel se capturan desde:
+
+- un **portal web** propio (red `Raulcito-Setup`), o
+- **Bluetooth (BLE)** con la app gratuita **nRF Connect**.
+
+Una vez conectado, el robot ofrece un **panel de control** en `http://raulcito.local`.
+
+> Alexa controla al ESP32 **por Wi-Fi, a través de SinricPro**, no por Bluetooth. El Bluetooth solo sirve para **configurar** el Wi-Fi y las claves desde el celular.
+
+---
+
+## 1. Hardware y pines
+
+| Elemento | Pin ESP32 |
+|---|---|
+| HC-SR04 TRIG / ECHO | GPIO5 / GPIO18 |
+| PIR | GPIO4 |
+| LDR | GPIO36 (ADC) |
+| UART al Arduino (Serial2, 9600 baud) | RX = GPIO16 (← pin 8 Arduino), TX = GPIO17 (→ pin 7 Arduino) |
+| Botón BOOT (borrar configuración) | GPIO0 (botón de la placa) |
+| LED de estado | GPIO2 (LED azul de la placa) |
+
+El sketch del Arduino (`arduino_raulcito/`) no cambió. Comandos: `RECOGER`, `REPOSO`, `PING`. Respuestas: `OK:LISTO`, `OK:RECOGIDO`, `OK:REPOSO`, `OK:PONG`, `EST:RECOGIENDO`, `EST:TAPA_ABIERTA`, `ERR:<cmd>`.
+
+---
+
+## 2. Qué necesitas instalar
+
+### Placa y esquema de particiones
+
+| Ajuste en Arduino IDE (menú **Herramientas**) | Valor |
+|---|---|
+| Core | **esp32 de Espressif Systems 3.x** (probado con **3.3.12**) |
+| Placa | **ESP32 Dev Module** (`esp32:esp32:esp32`) |
+| Partition Scheme | **Huge APP (3MB No OTA/1MB SPIFFS)** |
+
+> ⚠️ **Selecciona la partición "Huge APP".** Wi-Fi, BLE y SinricPro juntos no caben en la partición por defecto (1.2 MB) y la compilación falla con *"Sketch too big"*.
+
+Se usa Arduino IDE 2.x (no PlatformIO).
+
+### Librerías
+
+Instálalas desde **Sketch → Include Library → Manage Libraries…**
+
+| Librería | Versión probada | Autor | Notas |
+|---|---|---|---|
+| **SinricPro** | 5.1.0 | Boris Jaeger | Conexión con Alexa |
+| **WebSockets** | 2.7.2 | Markus Sattler | Dependencia de SinricPro (se instala con ella) |
+| **ArduinoJson** | 7.4.3 | Benoit Blanchon | Se requiere la versión **7** |
+| **NimBLE-Arduino** | 2.5.2 | h2zero | Se requiere la versión **2.x**, porque la API de callbacks cambió respecto a la 1.x |
+
+Incluidas en el core esp32 3.3.12 (no se instalan aparte): `WiFi`, `WebServer`, `DNSServer`, `ESPmDNS`, `Preferences`, `HTTPClient`.
+
+### Archivos del firmware (`esp32_raulcito/`)
+
+| Archivo | Qué hace |
+|---|---|
+| `esp32_raulcito.ino` | Lógica del robot (sensores, Arduino, SinricPro, registro HTTP) y la máquina de estados del Wi-Fi |
+| `config.h / config.cpp` | Lee, guarda, borra y valida la configuración en la NVS (`Preferences`) |
+| `portal.h / portal.cpp` | Servidor web, portal cautivo (DNS), API JSON, PIN y buffer de los últimos 20 eventos |
+| `ble_setup.h / ble_setup.cpp` | Servicio GATT de configuración por BLE (NimBLE) |
+| `web_ui.h` | Página única (HTML, CSS y JS embebidos, unos 20 KB, sin CDNs) |
+
+### Compilar y subir
+
+1. Abre `esp32_raulcito/esp32_raulcito.ino` en Arduino IDE 2.x.
+2. Elige la placa, el puerto y la partición **Huge APP**.
+3. Haz clic en **Subir**. Después abre el **Monitor Serie a 115200 baud**.
+
+Con `arduino-cli`:
+
+```bash
+arduino-cli compile --fqbn esp32:esp32:esp32:PartitionScheme=huge_app esp32_raulcito
+arduino-cli upload  --fqbn esp32:esp32:esp32:PartitionScheme=huge_app -p COM5 esp32_raulcito
+```
+
+---
+
+## 3. Primer uso: configurar el robot
+
+Sin configuración guardada, el ESP32 entra en **modo configuración**: el LED parpadea lento, levanta la red Wi-Fi **`Raulcito-Setup`** y anuncia **`Raulcito-BLE`** por Bluetooth. Elige una de las dos opciones.
+
+> El ESP32 solo se conecta a redes de **2.4 GHz**.
+
+Ten a la mano los datos de SinricPro (en [sinric.pro](https://sinric.pro), sección *Credentials* y *Devices*):
+- **APP_KEY** (36 caracteres) y **APP_SECRET** (73 caracteres).
+- **Device ID** (24 caracteres) de cada dispositivo: Switch *Raulcito*, Motion *Movimiento* y Contact *Oscuridad*.
+
+### Opción A: portal web (Wi-Fi)
+
+1. En el celular, conéctate a la red **`Raulcito-Setup`**, contraseña **`raulcito123`**. La contraseña se cambia en `AP_PASS`, dentro del `.ino`.
+2. La página de configuración se abre sola (portal cautivo). Si no aparece, abre **http://192.168.4.1** en el navegador. Si el celular dice "sin internet", elige **mantener la conexión**.
+3. Toca **Buscar**, elige tu red de la lista (muestra la intensidad de la señal) o escribe el nombre a mano.
+4. Escribe la **contraseña del Wi-Fi** y define un **PIN de 4 dígitos** para el panel.
+5. Revisa el **nombre del robot** (por defecto `raulcito-01`) y la **URL de la API**, por ejemplo `http://192.168.1.10/raulcito/guardar.php`.
+6. Captura **APP_KEY**, **APP_SECRET** y los **3 Device IDs**. Si dejas vacío SinricPro, el robot funciona sin Alexa.
+7. Toca **Guardar y conectar**. El ESP32 guarda todo en la NVS y se reinicia. El LED parpadea rápido mientras se conecta y queda **fijo** cuando ya está conectado.
+8. Conecta el celular a tu red normal y abre **http://raulcito.local**.
+
+Mientras el robot está en modo configuración, la página también muestra los sensores y los botones, así que puedes probar el hardware sin tener Wi-Fi.
+
+### Opción B: Bluetooth con nRF Connect
+
+Instala **nRF Connect for Mobile** (Nordic Semiconductor), gratis en Android e iOS.
+
+#### UUIDs del servicio
+
+Servicio: **`7a1e0000-7261-756c-6369-746f00000000`**
+
+| Característica | UUID | Propiedades | Valor |
+|---|---|---|---|
+| SSID | `7a1e0001-7261-756c-6369-746f00000000` | Escribir, Leer | Nombre de la red Wi-Fi |
+| PASSWORD | `7a1e0002-7261-756c-6369-746f00000000` | Escribir | Contraseña del Wi-Fi |
+| APP_KEY | `7a1e0003-7261-756c-6369-746f00000000` | Escribir | APP_KEY de SinricPro |
+| APP_SECRET | `7a1e0004-7261-756c-6369-746f00000000` | Escribir | APP_SECRET de SinricPro |
+| ID_ROBOT | `7a1e0005-7261-756c-6369-746f00000000` | Escribir, Leer | Device ID del Switch *Raulcito* |
+| ID_PIR | `7a1e0006-7261-756c-6369-746f00000000` | Escribir, Leer | Device ID del Motion *Movimiento* |
+| ID_LDR | `7a1e0007-7261-756c-6369-746f00000000` | Escribir, Leer | Device ID del Contact *Oscuridad* |
+| URL_API | `7a1e0008-7261-756c-6369-746f00000000` | Escribir, Leer | URL de `guardar.php` |
+| PIN *(opcional)* | `7a1e0009-7261-756c-6369-746f00000000` | Escribir | PIN del panel (si no se escribe, queda `1234`) |
+| NOMBRE *(opcional)* | `7a1e000a-7261-756c-6369-746f00000000` | Escribir, Leer | Nombre del robot (`raulcito-01`) |
+| **GUARDAR** | `7a1e00f0-7261-756c-6369-746f00000000` | Escribir | Escribe `1` para probar, guardar y reiniciar |
+| **ESTADO** | `7a1e00f1-7261-756c-6369-746f00000000` | Leer, Notificar | `ESPERANDO`, `CONECTANDO`, `OK:<IP>` o `ERROR:<motivo>` |
+
+Cada característica tiene una descripción (descriptor 0x2901) con su nombre, así que nRF Connect muestra "SSID", "PASSWORD", etc. bajo cada UUID.
+
+#### Paso a paso
+
+1. Comprueba que el ESP32 está en modo configuración (LED con parpadeo lento).
+2. Abre nRF Connect y, en la pestaña **Scanner**, toca **Scan**. Busca **`Raulcito-BLE`** y toca **Connect**.
+3. Abre el servicio **`7a1e0000-…`** (aparece como *Unknown Service*).
+4. En **ESTADO** (`…00f1`), toca el ícono de **notificaciones** (tres flechas hacia abajo) para suscribirte. Con la flecha de lectura debe aparecer `ESPERANDO`.
+5. En cada característica toca la flecha **↑ (escribir)**, elige el formato **TEXT** (en Android) o **UTF8** (en iOS), escribe el valor y toca **Send**. Escribe en este orden:
+   1. **SSID**
+   2. **PASSWORD**
+   3. **APP_KEY** y **APP_SECRET**
+   4. **ID_ROBOT**, **ID_PIR** e **ID_LDR**
+   5. **URL_API**
+   6. *(opcional)* **PIN** y **NOMBRE**
+6. En **GUARDAR** (`…00f0`), escribe `1` (como TEXT o como byte `01`).
+7. Observa **ESTADO**:
+   - `CONECTANDO`: el ESP32 está probando la red (hasta 20 s).
+   - `OK:192.168.1.50`: se conectó. **Anota la IP**. La configuración se guarda y el ESP32 se reinicia en 5 s.
+   - `ERROR:<motivo>`: no se guardó nada. Corrige el campo indicado y vuelve a escribir `1` en GUARDAR.
+8. Abre **http://raulcito.local** (o la IP anotada) con el celular conectado a la misma red.
+
+Notas:
+- Los campos secretos (PASSWORD, APP_KEY, APP_SECRET, PIN) **solo se pueden escribir**, no leer.
+- Si no escribes un campo, se conserva lo que ya estaba guardado.
+- Si un texto largo (APP_SECRET) se corta, en Android usa el menú ⋮ → **Request MTU** (517) antes de escribir.
+
+---
+
+## 4. Panel de control
+
+- **Dirección:** **http://raulcito.local**, o la IP que imprime el Monitor Serie al arrancar:
+  ```
+  Wi-Fi OK: 192.168.1.50  (red "MiCasa")
+  Panel: http://raulcito.local  o  http://192.168.1.50
+  ```
+  Algunos Android antiguos no resuelven `.local`. En ese caso usa la IP.
+- **PIN de 4 dígitos.** El que definiste en el portal (`1234` si se configuró por BLE sin PIN; el panel avisa para que lo cambies). Después de **5 intentos fallidos** hay un bloqueo de **30 s**.
+- **En vivo** (se refresca cada 1 s):
+  - Distancia en cm, movimiento (PIR) y luz (0–4095, claro u oscuro).
+  - Wi-Fi (red, señal en dBm, IP), estado de SinricPro, hora.
+  - Modo limpieza, estado del brazo y último mensaje del Arduino.
+- **Botones:** *Iniciar/Detener limpieza*, *Recoger ahora*, *Reposo* y *Ping al Arduino* (la respuesta `OK:PONG` aparece en "Último mensaje").
+- **Últimos 20 eventos**, guardados en la RAM del ESP32.
+- **Configuración:** permite editar los mismos datos del portal. Las contraseñas guardadas **no se muestran**: si dejas un campo secreto vacío, se conserva el valor guardado. Al guardar, el ESP32 se reinicia y la página se reconecta sola.
+- **Alexa sincronizada:** cuando inicias o detienes la limpieza desde el panel, también se avisa a SinricPro (`sendPowerStateEvent`), así que la app de Alexa muestra el estado correcto. Y si dices "Alexa, enciende Raulcito", el panel lo refleja en el siguiente refresco.
+
+---
+
+## 5. Restablecer de fábrica
+
+Tienes dos formas de hacerlo:
+
+- **Botón BOOT:** con el robot ya encendido, mantén presionado **BOOT 5 segundos**. El LED parpadea muy rápido; **suelta el botón** y el ESP32 se reinicia en modo configuración.
+- **Desde el panel:** ve a **Configuración → Restablecer de fábrica** y confirma.
+
+> No mantengas BOOT presionado al **encender** o al presionar **EN/RST**, porque el ESP32 entraría en modo de programación. Por eso el firmware espera a que sueltes el botón antes de reiniciar.
+
+---
+
+## 6. Estados del Wi-Fi
+
+```mermaid
+stateDiagram-v2
+    state "AP / BLE (modo configuración)" as AP
+    [*] --> SIN_CONFIG
+    SIN_CONFIG --> AP: no hay red guardada
+    SIN_CONFIG --> CONECTANDO: hay red guardada
+    AP --> CONECTANDO: Guardar (portal) o GUARDAR=1 (BLE), reinicia
+    CONECTANDO --> CONECTADO: Wi-Fi OK en menos de 20 s
+    CONECTANDO --> AP: 20 s sin conectar
+    CONECTADO --> CONECTANDO: Wi-Fi perdido 20 s, reinicia
+    AP --> CONECTANDO: 5 min sin uso con red guardada, reinicia
+    CONECTADO --> AP: BOOT 5 s o Restablecer
+```
+
+```
+SIN_CONFIG ──(sin red)──► AP/BLE ──(guardar)──► CONECTANDO ──(OK)──► CONECTADO
+                            ▲                        │                    │
+                            └──(20 s sin conectar)───┘                    │
+                            ▲                                             │
+                            └─(falla: 20 s sin Wi-Fi → reinicia → CONECTANDO → 20 s)
+```
+
+| Estado | Qué hace | LED (GPIO2) |
+|---|---|---|
+| SIN_CONFIG | Arranque: lee la NVS | apagado |
+| CONECTANDO | Intenta la red guardada durante 20 s | parpadeo rápido |
+| CONECTADO | Panel, mDNS `raulcito.local`, SinricPro, registro HTTP | fijo |
+| AP / BLE | Red `Raulcito-Setup` + portal cautivo en 192.168.4.1 + `Raulcito-BLE`. Sensores y Arduino siguen funcionando; no hay Alexa ni registro HTTP | parpadeo lento |
+
+- **Falla estando conectado:** si el Wi-Fi se pierde **20 s**, el ESP32 se reinicia. Así tiene una oportunidad más (por si el router solo se reinició); si sigue sin red, entra a modo AP.
+- **Reintento automático:** en modo AP, si hay una red guardada y nadie usa el portal ni el Bluetooth durante 5 min, el ESP32 se reinicia para volver a intentarlo. Así no se queda "atorado" si el router tardó en volver.
+- Los tiempos se ajustan en el `.ino`: `WIFI_TIMEOUT`, `AP_REINTENTO`, `BOOT_RESET`.
+
+---
+
+## 7. API JSON del ESP32
+
+Todas las rutas requieren el header **`X-PIN`**, excepto en modo AP. Las respuestas son JSON; los errores llegan como `{"ok":false,"error":"…"}`. Un PIN incorrecto da `401` y el bloqueo da `429`.
+
+| Método y ruta | Descripción |
+|---|---|
+| `GET /api/status` | Sensores y estados: `modo`, `dist`, `pir`, `luz`, `oscuro`, `limpiando`, `brazo`, `arduino`, `sinric`, `wifi{ssid,rssi,ip}`, `hora`, `ev`… |
+| `GET /api/scan` | Redes Wi-Fi. La búsqueda es asíncrona: responde `{"buscando":true}` hasta tener `{"redes":[{"ssid","rssi","segura"}]}`. `?nuevo=1` fuerza una búsqueda nueva |
+| `GET /api/events` | Últimos 20 eventos `{"eventos":[{"seg","fecha","tipo","valor"}]}` |
+| `POST /api/cmd` | `{"cmd":"RECOGER" \| "REPOSO" \| "PING" \| "LIMPIEZA_ON" \| "LIMPIEZA_OFF"}` |
+| `GET /api/config` | Configuración **sin contraseñas**: solo indica si existen (`tiene_pass`, `tiene_key`, `tiene_secret`) |
+| `POST /api/config` | Guarda y reinicia. Campos: `ssid`, `pass`, `abierta`, `pin`, `nombre`, `url`, `app_key`, `app_secret`, `id_robot`, `id_pir`, `id_ldr`. En los secretos, vacío = conservar |
+| `POST /api/reset` | Restablece de fábrica y reinicia |
+
+Ejemplos:
+
+```bash
+curl -H "X-PIN: 4821" http://raulcito.local/api/status
+curl -X POST -H "X-PIN: 4821" -H "Content-Type: application/json" \
+     -d '{"cmd":"LIMPIEZA_ON"}' http://raulcito.local/api/cmd
+```
+
+---
+
+## 8. Registro de eventos (`guardar.php`)
+
+- Se envía **el mismo JSON que antes**: `{"robot":"raulcito-01","tipo":"…","valor":"…","fecha":"AAAA-MM-DD HH:MM:SS"}`.
+- El envío corre en una **tarea aparte** (cola de 10 eventos, timeout de 3 s), así que el `loop()` **nunca se bloquea** esperando al servidor.
+- Sin Wi-Fi (o en modo AP), el evento **solo se guarda en el buffer local** (los 20 que muestra el panel).
+- Tipos nuevos: `panel` (`limpieza_inicio`, `limpieza_fin`, `recoger`, `reposo`). Los demás no cambian: `sistema`, `alexa`, `ultrasonico`, `brazo`, `tapa`, `ldr`, `pir`, `error`.
+  > Si la columna `tipo` de `raulcito.sql` es un `ENUM`, agrégale el valor `panel` para que se guarden esas filas.
+
+---
+
+## 9. Seguridad
+
+- **Ninguna contraseña** sale por `/api/config` ni se imprime en el Monitor Serie. Tampoco se imprimen la APP_KEY, el APP_SECRET, el PIN ni la contraseña del AP.
+- La librería SinricPro imprime el APP_SECRET si tiene un formato inválido. Por eso el firmware **valida el formato antes** de llamar a `SinricPro.begin()`; si no es válido, desactiva Alexa sin imprimir nada.
+- Las credenciales se guardan en la NVS del ESP32 (namespace `raulcito`). El firmware usa `WiFi.persistent(false)` para que no queden copias en la NVS interna del Wi-Fi.
+- El PIN de 4 dígitos tiene bloqueo tras 5 intentos fallidos. El panel usa HTTP sin cifrar, así que **úsalo solo en tu red local**.
+- El servicio BLE no pide emparejamiento. Por eso **solo está activo en modo configuración**, y GUARDAR solo guarda si la red Wi-Fi realmente conecta.
+
+---
+
+## 10. Solución de problemas
+
+| Problema | Solución |
+|---|---|
+| *Sketch too big* al compilar | Selecciona **Huge APP (3MB No OTA/1MB SPIFFS)** |
+| Errores de `onWrite(… NimBLEConnInfo&)` | Tienes NimBLE-Arduino 1.x; actualiza a **2.x** |
+| El portal no se abre solo | Abre `http://192.168.4.1`; desactiva los datos móviles mientras configuras |
+| `raulcito.local` no abre | Usa la IP del Monitor Serie (o la de `OK:<IP>` en nRF Connect) |
+| No aparece mi red en la lista | El ESP32 solo ve redes de 2.4 GHz; escríbela a mano si está oculta |
+| SinricPro dice "Sin configurar" | APP_KEY / APP_SECRET con formato inválido o sin Device IDs; revisa el Monitor Serie |
+| No veo `Raulcito-BLE` | El BLE solo está activo en modo configuración (LED con parpadeo lento) |
+| Olvidé el PIN | Restablece con BOOT 5 s y vuelve a configurar |
+
+---
+
+## 11. Cambios respecto al firmware anterior
+
+- Se eliminaron los `#define` con credenciales; todo se lee de la NVS (`cfg.*`).
+- `registrar()` ya no bloquea: el envío HTTP pasó a una tarea con cola.
+- Los dispositivos Motion y Contact se registran en SinricPro **antes** de `begin()`. Antes, `SinricPro[ID_PIR];` suelto no los creaba y se agregaban hasta el primer evento, lo que forzaba una reconexión.
+- La hora se consulta sin esperar (antes cada consulta podía tardar 50 ms si no había NTP).
+- La distancia se mide siempre para mostrarla en el panel. La lógica de recoger no cambió: solo se dispara con la limpieza activa y el brazo libre.
+- Se desactivó el mDNS interno de SinricPro (`SINRICPRO_NOMDNS`) para que `raulcito.local` funcione.
