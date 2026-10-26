@@ -10,7 +10,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  sendEmailVerification, sendPasswordResetEmail, signOut
+  sendPasswordResetEmail, signOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getDatabase, ref, onValue, set, update, remove, serverTimestamp
@@ -24,7 +24,7 @@ const db = getDatabase(app);
 
 // ---------- Utilidades ----------
 const $ = id => document.getElementById(id);
-const VISTAS = ["vCargando", "vLogin", "vVerificar", "vSinAcceso", "vPanel"];
+const VISTAS = ["vCargando", "vLogin", "vSinAcceso", "vPanel"];
 function ver(id, si) { $(id).classList.toggle("oculto", !si); }
 function vista(id) { VISTAS.forEach(v => ver(v, v === id)); }
 function el(t, c, x) { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; }
@@ -77,12 +77,8 @@ $("fLogin").onsubmit = async e => {
   if (!correo || pass.length < 6) { $("lErr").textContent = "Escribe tu correo y una contraseña de al menos 6 caracteres."; return; }
   $("bLogin").disabled = true; $("lErr").textContent = "";
   try {
-    if (creando) {
-      const c = await createUserWithEmailAndPassword(auth, correo, pass);
-      await sendEmailVerification(c.user);
-    } else {
-      await signInWithEmailAndPassword(auth, correo, pass);
-    }
+    if (creando) await createUserWithEmailAndPassword(auth, correo, pass);
+    else await signInWithEmailAndPassword(auth, correo, pass);
   } catch (x) { $("lErr").textContent = mensaje(x); }
   finally { $("bLogin").disabled = false; }
 };
@@ -95,25 +91,13 @@ $("bOlvide").onclick = async () => {
 };
 
 $("bSalir").onclick = () => signOut(auth);
-$("bReenviar").onclick = async () => {
-  try { await sendEmailVerification(auth.currentUser); toast("Correo reenviado."); }
-  catch (x) { toast(mensaje(x)); }
-};
-$("bYaVerifique").onclick = async () => {
-  await auth.currentUser.reload();
-  if (!auth.currentUser.emailVerified) { toast("Todavía no aparece verificado. Revisa tu correo (y spam)."); return; }
-  await auth.currentUser.getIdToken(true);   // token nuevo con el correo verificado
-  usuario = auth.currentUser;
-  iniciarDatos();
-};
-$("bReintentar").onclick = async () => { await auth.currentUser.getIdToken(true); iniciarDatos(); };
+$("bReintentar").onclick = () => iniciarDatos();
 
 onAuthStateChanged(auth, u => {
   detenerDatos();
   usuario = u;
   ver("bSalir", !!u);
   if (!u) { vista("vLogin"); pill("Sin sesión"); $("hSub").textContent = "Panel en línea"; return; }
-  if (!u.emailVerified) { $("vCorreo").textContent = u.email; vista("vVerificar"); pill("Verifica tu correo"); return; }
   iniciarDatos();
 });
 

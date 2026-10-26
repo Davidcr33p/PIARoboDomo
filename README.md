@@ -177,10 +177,11 @@ Desde aquí se hace todo, en cualquier lugar: ver los sensores en vivo, mandar c
 
 ### Entrar por primera vez
 
-1. Abre **https://raulcito-bracito.web.app** y toca **Crear una** cuenta, con tu correo y una contraseña.
-2. Abre el correo de verificación que te llega (revisa spam) y luego toca **Ya verifiqué**.
-3. Solo entran los correos que están en el **Equipo**. Ya están dados de alta como administradores `david.rvrcls@gmail.com` y `andre.riverac@uanl.edu.mx`.
-4. Para agregar a tus compañeros, ve a **Equipo → Agregar persona**, escribe su correo y marca *Administrador* si también podrá vincular el robot y agregar gente. Después, cada quien crea su cuenta con ese correo.
+1. Abre **https://raulcito-bracito.web.app** y toca **Crear una** cuenta, con tu correo y una contraseña. Entras de inmediato, sin correo de verificación.
+2. Solo entran los correos que están en el **Equipo**. Ya están dados de alta como administradores `david.rvrcls@gmail.com` y `andre.riverac@uanl.edu.mx`.
+3. Para agregar a tus compañeros, ve a **Equipo → Agregar persona**, escribe su correo y marca *Administrador* si también podrá vincular el robot y agregar gente. Después, cada quien crea su cuenta con ese correo.
+
+> Como no se verifica el correo, cualquiera que sepa un correo del Equipo que **todavía no tiene cuenta** podría registrarse con él. Pide a cada persona que cree su cuenta en cuanto la agregues: una vez creada, nadie más puede usar ese correo.
 
 ### Vincular el robot (una sola vez)
 
@@ -332,7 +333,7 @@ curl -X POST -H "X-PIN: 4821" -H "Content-Type: application/json" \
 
 ## 10. Seguridad
 
-- **Página de internet:** solo entran cuentas con correo **verificado** que estén en el Equipo. Los administradores agregan o quitan gente y vinculan el robot. Las reglas de Firebase (`database.rules.json`) se aplican en el servidor, así que no se pueden saltar desde el navegador.
+- **Página de internet:** solo entran cuentas cuyo correo esté en el Equipo (sin verificación de correo; ver la nota de la sección 4). Los administradores agregan o quitan gente y vinculan el robot. Las reglas de Firebase (`database.rules.json`) se aplican en el servidor, así que no se pueden saltar desde el navegador.
 - **Cuenta del robot:** el robot la crea solo, con una contraseña aleatoria guardada en su NVS (namespace `nube`), y solo funciona después de que un administrador la vincula. Las conexiones a Firebase usan HTTPS con verificación de certificados (`useBuiltinCACertBundle`).
 - **Ninguna contraseña** sale por `/api/config` ni se imprime en el Monitor Serie. Tampoco se imprimen la APP_KEY, el APP_SECRET, el PIN, la contraseña del AP ni la de la cuenta del robot.
 - La librería SinricPro imprime el APP_SECRET si tiene un formato inválido. Por eso el firmware **valida el formato antes** de llamar a `SinricPro.begin()`; si no es válido, desactiva Alexa sin imprimir nada.

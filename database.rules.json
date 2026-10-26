@@ -4,34 +4,34 @@
     ".write": false,
 
     "equipo": {
-      ".read": "auth != null && auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
+      ".read": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
       "$correo": {
-        ".write": "auth != null && auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).child('admin').val() == true",
+        ".write": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).child('admin').val() == true",
         ".validate": "newData.hasChildren(['email', 'admin']) && newData.child('email').isString() && newData.child('email').val().toLowerCase().replace('.', ',') == $correo && newData.child('admin').isBoolean()"
       }
     },
 
     "dispositivo": {
-      ".read": "auth != null && (data.val() == auth.uid || (auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()))",
-      ".write": "auth != null && auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).child('admin').val() == true",
+      ".read": "auth != null && (data.val() == auth.uid || (root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()))",
+      ".write": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).child('admin').val() == true",
       ".validate": "newData.isString()"
     },
 
     "solicitudes": {
-      ".read": "auth != null && auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).child('admin').val() == true",
+      ".read": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).child('admin').val() == true",
       "$uid": {
-        ".write": "auth != null && (auth.uid == $uid || (auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).child('admin').val() == true))",
+        ".write": "auth != null && (auth.uid == $uid || (root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).child('admin').val() == true))",
         ".validate": "newData.hasChildren(['codigo', 'ts']) && newData.child('codigo').isString() && newData.child('codigo').val().matches(/^[0-9]{6}$/)"
       }
     },
 
     "robot": {
       "estado": {
-        ".read": "auth != null && auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
+        ".read": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
         ".write": "auth != null && auth.uid == root.child('dispositivo').val()"
       },
       "eventos": {
-        ".read": "auth != null && auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
+        ".read": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
         ".write": "auth != null && auth.uid == root.child('dispositivo').val()"
       },
       "eventos_n": {
@@ -39,22 +39,22 @@
         ".write": "auth != null && auth.uid == root.child('dispositivo').val()"
       },
       "respuesta": {
-        ".read": "auth != null && auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
+        ".read": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
         ".write": "auth != null && auth.uid == root.child('dispositivo').val()"
       },
       "ordenes": {
         ".read": "auth != null && auth.uid == root.child('dispositivo').val()",
         "comando": {
-          ".read": "auth != null && auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
-          ".write": "auth != null && auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
+          ".read": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
+          ".write": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
           ".validate": "newData.hasChildren(['cmd', 'n', 'por']) && newData.child('cmd').isString() && newData.child('cmd').val().matches(/^(RECOGER|REPOSO|PING|LIMPIEZA_ON|LIMPIEZA_OFF)$/) && newData.child('n').isNumber()"
         },
         "config": {
-          ".read": "auth != null && auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
-          ".write": "auth != null && (auth.uid == root.child('dispositivo').val() || (auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()))"
+          ".read": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
+          ".write": "auth != null && (auth.uid == root.child('dispositivo').val() || (root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()))"
         },
         "secretos": {
-          ".write": "auth != null && (auth.uid == root.child('dispositivo').val() || (auth.token.email_verified == true && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()))"
+          ".write": "auth != null && (auth.uid == root.child('dispositivo').val() || (root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()))"
         }
       }
     }
