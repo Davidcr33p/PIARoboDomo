@@ -82,6 +82,22 @@ static void crearIdentidad() {
   snprintf(codigo, sizeof(codigo), "%06u", (unsigned)(esp_random() % 1000000));
 }
 
+// ---------- DIAGNÓSTICO ----------
+// Imprime un problema solo cuando cambia, para no llenar el monitor serie
+static void avisar(const String &msg) {
+  static String anterior;
+  if (msg == anterior) return;
+  anterior = msg;
+  Serial.printf("[NUBE] %s · memoria libre %lu (bloque mayor %lu)\n", msg.c_str(),
+                (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMaxAllocHeap());
+}
+
+static String errorTls(NetworkClientSecure &tls) {
+  char buf[100] = "";
+  int e = tls.lastError(buf, sizeof(buf));
+  return e ? String(buf) + " (" + e + ")" : String("sin detalle");
+}
+
 // ---------- HTTPS ----------
 static String urlDb(const String &ruta, bool silencioso = false) {
   return "https://" FB_HOST + ruta + ".json?auth=" + idToken + (silencioso ? "&print=silent" : "");
@@ -101,6 +117,13 @@ static int pedir(const char *metodo, const String &url, const String &cuerpo, St
   String r = codigoHttp > 0 ? http.getString() : "";
   if (respuesta) *respuesta = r;
   http.end();
+  if (codigoHttp < 200 || codigoHttp >= 300) {
+    int a = url.indexOf('/', 8), b = url.indexOf('?');
+    String ruta = url.substring(a, b > a ? b : url.length());   // sin la clave ni el token
+    avisar(String(metodo) + " " + ruta + " -> " +
+           (codigoHttp < 0 ? HTTPClient::errorToString(codigoHttp) + " / TLS: " + errorTls(tlsRest)
+                           : String(codigoHttp)));
+  }
   return codigoHttp;
 }
 
@@ -186,14 +209,24 @@ static bool leerLinea(String &linea, unsigned long espera) {
 // Abre el stream; regresa el código HTTP (401 = robot sin vincular)
 static int abrirStream() {
   tlsSse.stop();
-  if (!tlsSse.connect(FB_HOST, 443)) return -1;
+  if (!tlsSse.connect(FB_HOST, 443)) {
+    avisar("No se pudo conectar a la base de datos. TLS: " + errorTls(tlsSse));
+    return -1;
+  }
   tlsSse.print(String("GET /robot/ordenes.json?auth=") + idToken + " HTTP/1.1\r\n"
                "Host: " FB_HOST "\r\nAccept: text/event-stream\r\n\r\n");
   String linea;
-  if (!leerLinea(linea, 6000) || linea.length() < 12) { tlsSse.stop(); return -1; }
-  int codigoHttp = linea.substring(9, 12).toInt();
+  if (!leerLinea(linea, 6000) || linea.length() < 12) {
+    avisar("La base de datos no respondió al abrir las órdenes (" +
+           String(tlsSse.connected() ? "sin respuesta" : "conexión cerrada") + ")");
+    tlsSse.stop();
+    return -2;
+  }
+  String estadoHttp = linea;
+  int codigoHttp = estadoHttp.substring(9, 12).toInt();
   while (leerLinea(linea, 6000) && linea.length()) {}   // salta los encabezados
   if (codigoHttp != 200) tlsSse.stop();
+  if (codigoHttp != 200 && codigoHttp != 401) avisar("Al abrir las órdenes la base de datos respondió: " + estadoHttp);
   lineaSse = "";
   eventoSse = "";
   tDatoSse = millis();
@@ -218,8 +251,8 @@ static void revisarOrden(JsonVariant c, bool soloMarcar) {
 
 static void procesarEvento(const String &evento, const String &datos) {
   if (evento == "keep-alive") return;
-  if (evento == "auth_revoked") { tlsSse.stop(); tExpira = millis(); return; }   // renovar token
-  if (evento == "cancel") { tlsSse.stop(); return; }                             // perdió permiso
+  if (evento == "auth_revoked") { avisar("Token vencido, renovando"); tlsSse.stop(); tExpira = millis(); return; }
+  if (evento == "cancel") { avisar("La base de datos cerró las órdenes (¿robot desvinculado?)"); tlsSse.stop(); return; }
   if (evento != "put" && evento != "patch") return;
   JsonDocument d;
   if (deserializeJson(d, datos)) return;
@@ -396,7 +429,7 @@ static void tareaNube(void *) {
     if (!tlsSse.connected()) {
       int c = abrirStream();
       if (c == 200) {
-        if (estado != N_CONECTADA) Serial.println("[NUBE] Conectada a " PAGINA_WEB);
+        if (estado != N_CONECTADA) avisar("Conectada a " PAGINA_WEB);
         estado = N_CONECTADA;
       } else if (c == 401) {
         if (estado != N_SIN_VINCULAR)
@@ -415,7 +448,8 @@ static void tareaNube(void *) {
     }
 
     leerStream();
-    if (millis() - tDatoSse > 75000) { tlsSse.stop(); continue; }   // sin keep-alive: reconectar
+    if (!tlsSse.connected()) { avisar("Se cortó la conexión de órdenes. TLS: " + errorTls(tlsSse)); continue; }
+    if (millis() - tDatoSse > 75000) { avisar("Sin señal de la base de datos en 75 s, reconectando"); tlsSse.stop(); continue; }
     if (tRevision && (long)(millis() - tRevision) >= 0) {
       tRevision = 0;
       revisarConfig();

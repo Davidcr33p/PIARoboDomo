@@ -332,6 +332,7 @@ bool conectarWifi() {
 
 void modoNormal() {
   modo = CONECTADO;
+  btMemRelease(BT_MODE_BTDM);                // en este modo no hay Bluetooth: ~36 KB más para HTTPS
   WiFi.setSleep(false);                      // respuesta más rápida (sin BLE en este modo)
   WiFi.setAutoReconnect(true);
   String ip = WiFi.localIP().toString();

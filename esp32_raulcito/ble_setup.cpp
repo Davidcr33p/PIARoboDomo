@@ -3,6 +3,7 @@
 #include "config.h"
 #include <WiFi.h>
 #include <NimBLEDevice.h>
+#include "esp32-hal-alloc-ble-mem.h"   // avisa al core que se usa BLE (si no, libera su memoria al arrancar)
 
 #define BLE_NOMBRE "Raulcito-BLE"
 
