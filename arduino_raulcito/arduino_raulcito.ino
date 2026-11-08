@@ -39,7 +39,7 @@ const byte PIR  = 10;              // Sensor de movimiento PIR
 const byte LDR  = A0;              // Sensor de luz LDR (analógico 0-1023)
 
 // --- Rango inicial de la pinza: ajustable desde la página ---
-const int PINZA_ABIERTA = 90, PINZA_CERRADA = 20;
+const int PINZA_ABIERTA = 75, PINZA_CERRADA = 35;
 bool pinzaCerrada = false;
 bool tapaAbierta  = false;
 
@@ -67,6 +67,10 @@ void cargarPosiciones() {
   const int maximos[4] = {180, 160, 160, PINZA_ABIERTA};
   for (byte i = 0; i < 4; i++) {
     byte valor = EEPROM.read(i);
+    if (i == 3) {
+      actual[i] = constrain(valor, PINZA_CERRADA, PINZA_ABIERTA);
+      continue;
+    }
     if (valor < minimos[i] || valor > maximos[i]) return;
     actual[i] = valor;
   }
