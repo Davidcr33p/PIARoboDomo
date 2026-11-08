@@ -248,6 +248,48 @@ document.querySelectorAll("[data-cmd]").forEach(b => b.onclick = async () => {
   }
 });
 
+// Mantener un control de articulación genera pasos pequeños; al soltarlo se manda STOP.
+let botonMantener = null, intervaloMantener = 0, envioMantener = false;
+function mandarPasoMantenido() {
+  if (!botonMantener || envioMantener) return;
+  envioMantener = true;
+  enviarComando(botonMantener.dataset.holdCmd, botonMantener.textContent.trim(), true)
+    .finally(() => { envioMantener = false; });
+}
+function iniciarMovimientoMantenido(b, e) {
+  if (!enLinea()) return toast("El robot está desconectado.");
+  e.preventDefault();
+  if (botonMantener) return;
+  botonMantener = b;
+  try { b.setPointerCapture(e.pointerId); } catch (_) {}
+  mandarPasoMantenido();
+  intervaloMantener = setInterval(mandarPasoMantenido, 320);
+}
+function terminarMovimientoMantenido() {
+  if (!botonMantener) return;
+  clearInterval(intervaloMantener);
+  intervaloMantener = 0;
+  botonMantener = null;
+  enviarComando("STOP", "Paro", true);
+}
+document.querySelectorAll("[data-hold-cmd]").forEach(b => {
+  b.addEventListener("pointerdown", e => iniciarMovimientoMantenido(b, e));
+  b.addEventListener("pointerup", terminarMovimientoMantenido);
+  b.addEventListener("pointercancel", terminarMovimientoMantenido);
+  b.addEventListener("lostpointercapture", terminarMovimientoMantenido);
+});
+window.addEventListener("blur", terminarMovimientoMantenido);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) terminarMovimientoMantenido();
+});
+
+const pinzaAngulo = $("pinzaAngulo"), pinzaGrados = $("pinzaGrados");
+pinzaAngulo.addEventListener("input", () => { pinzaGrados.value = pinzaAngulo.value + "°"; });
+$("aplicarPinza").addEventListener("click", () => {
+  const grados = Number(pinzaAngulo.value);
+  enviarComando(`PINZA_POS_${grados}`, `Pinza ${grados}°`, true);
+});
+
 // ---------- Vinculación (administradores) ----------
 function pintarVinculacion() {
   if (!panelListo) return;

@@ -7,6 +7,7 @@
 
 #include <Servo.h>
 #include <SoftwareSerial.h>
+#include <EEPROM.h>
 
 // --- Comunicación con ESP32 ---
 SoftwareSerial esp(7, 8);           // RX=7 (<- TX2 ESP32), TX=8 (-> RX2 ESP32)
@@ -37,7 +38,7 @@ const byte ECHO = 4;               // HC-SR04 Echo
 const byte PIR  = 10;              // Sensor de movimiento PIR
 const byte LDR  = A0;              // Sensor de luz LDR (analógico 0-1023)
 
-// --- Ángulos de Pinza ---
+// --- Rango inicial de la pinza: ajustable desde la página ---
 const int PINZA_ABIERTA = 90, PINZA_CERRADA = 20;
 bool pinzaCerrada = false;
 bool tapaAbierta  = false;
@@ -47,9 +48,29 @@ const int REPOSO[3]     = {90,  90,  90};
 const int SUELO[3]      = {90, 140,  40};
 const int SOBRE_BAUL[3] = { 0,  80, 100};
 
-int actual[3] = {90, 90, 90};
+int actual[4] = {90, 90, 90, PINZA_ABIERTA};
 String linea = "";
 String comandoEnCola = "";
+
+const byte EEPROM_MARCA_DIR = 8;
+const byte EEPROM_MARCA = 0xA7;
+
+void guardarPosiciones() {
+  EEPROM.update(EEPROM_MARCA_DIR, EEPROM_MARCA);
+  for (byte i = 0; i < 4; i++) EEPROM.update(i, (byte)actual[i]);
+}
+
+void cargarPosiciones() {
+  if (EEPROM.read(EEPROM_MARCA_DIR) != EEPROM_MARCA) return;
+  const int minimos[4] = {0, 30, 20, PINZA_CERRADA};
+  const int maximos[4] = {180, 160, 160, PINZA_ABIERTA};
+  for (byte i = 0; i < 4; i++) {
+    byte valor = EEPROM.read(i);
+    if (valor < minimos[i] || valor > maximos[i]) return;
+    actual[i] = valor;
+  }
+  pinzaCerrada = actual[3] <= PINZA_CERRADA;
+}
 
 // Activa cada servo solo al recibir una orden; evita movimientos al arrancar.
 void escribirServo(Servo &servo, byte pin, int angulo) {
@@ -86,8 +107,7 @@ void imprimirDiagnostico() {
   Serial.print(F("  Base    (pin 3) : ")); Serial.print(actual[0]); Serial.println(F("°"));
   Serial.print(F("  Hombro  (pin 5) : ")); Serial.print(actual[1]); Serial.println(F("°"));
   Serial.print(F("  Codo    (pin 6) : ")); Serial.print(actual[2]); Serial.println(F("°"));
-  Serial.print(F("  Pinza   (pin 9) : "));
-  Serial.println(pinzaCerrada ? F("CERRADA (20°)") : F("abierta (90°)"));
+  Serial.print(F("  Pinza   (pin 9) : ")); Serial.print(actual[3]); Serial.println(F("°"));
 
   // Tapa DC
   Serial.print(F("  Tapa DC (pin11/12): "));
@@ -110,10 +130,9 @@ void revisarComandosDuranteMovimiento() {
       linea = "";
       if (cmd == "STOP") {
         paroSolicitado = true;
+        comandoEnCola = "";
         digitalWrite(TAPA_IN1, LOW);
         digitalWrite(TAPA_IN2, LOW);
-        esp.println("OK:PARADO");
-        Serial.println(F("[PARO] Orden recibida durante movimiento"));
       } else if (cmd.length() > 0) {
         // Conserva el siguiente comando para procesarlo al terminar la secuencia.
         if (comandoEnCola.length() == 0) comandoEnCola = cmd;
@@ -124,21 +143,57 @@ void revisarComandosDuranteMovimiento() {
   }
 }
 
+bool comprobarParo() {
+  revisarComandosDuranteMovimiento();
+  if (digitalRead(BOTON_PARO) != LOW && !paroSolicitado) return false;
+  paroSolicitado = false;
+  comandoEnCola = "";
+  digitalWrite(TAPA_IN1, LOW);
+  digitalWrite(TAPA_IN2, LOW);
+  if (base.attached()) base.write(actual[0]);
+  if (hombro.attached()) hombro.write(actual[1]);
+  if (codo.attached()) codo.write(actual[2]);
+  if (pinza.attached()) pinza.write(actual[3]);
+  guardarPosiciones();
+  esp.println("OK:PARADO");
+  Serial.println(F("[PARO] Movimiento interrumpido; servos mantienen el ultimo angulo"));
+  return true;
+}
+
+bool moverEje(Servo &servo, byte pin, byte indice, int objetivo) {
+  if (!servo.attached()) {
+    servo.attach(pin);
+    servo.write(actual[indice]);
+    delay(40);
+  }
+  objetivo = constrain(objetivo, indice == 1 ? 30 : indice == 2 ? 20 : indice == 3 ? PINZA_CERRADA : 0,
+                       indice == 1 || indice == 2 ? 160 : indice == 3 ? PINZA_ABIERTA : 180);
+  while (actual[indice] != objetivo) {
+    if (comprobarParo()) return false;
+    actual[indice] += (actual[indice] < objetivo) ? 1 : -1;
+    servo.write(actual[indice]);
+    delay(18);
+  }
+  guardarPosiciones();
+  return true;
+}
+
 bool mover(const int p[3]) {
   Serial.print(F("[SERVO] Moviendo -> Base:"));
   Serial.print(p[0]); Serial.print(F(" Hombro:"));
   Serial.print(p[1]); Serial.print(F(" Codo:"));
   Serial.println(p[2]);
   bool listo = false;
-  while (!listo) {
-    revisarComandosDuranteMovimiento();
-    if (digitalRead(BOTON_PARO) == LOW || paroSolicitado) {
-      paroSolicitado = false;
-      digitalWrite(TAPA_IN1, LOW);
-      digitalWrite(TAPA_IN2, LOW);
-      Serial.println(F("[PARO] Movimiento del brazo interrumpido"));
-      return false;
+  for (byte i = 0; i < 3; i++) {
+    if (!srv[i]->attached()) {
+      byte pin = i == 0 ? P_BASE : i == 1 ? P_HOMBRO : P_CODO;
+      srv[i]->attach(pin);
+      srv[i]->write(actual[i]);
     }
+  }
+  delay(40);
+  while (!listo) {
+    if (comprobarParo()) return false;
     listo = true;
     for (byte i = 0; i < 3; i++) {
       if (actual[i] != p[i]) {
@@ -152,16 +207,17 @@ bool mover(const int p[3]) {
     }
     delay(15);
   }
+  guardarPosiciones();
   Serial.println(F("[SERVO] Posicion alcanzada"));
   return true;
 }
 
-void setPinza(int ang) {
+bool setPinza(int ang) {
   Serial.print(F("[SERVO] Pinza -> "));
   Serial.print(ang); Serial.println(F("°"));
-  escribirServo(pinza, P_PINZA, ang);
-  pinzaCerrada = (ang == PINZA_CERRADA);
-  delay(300);
+  bool ok = moverEje(pinza, P_PINZA, 3, ang);
+  if (ok) pinzaCerrada = (actual[3] <= PINZA_CERRADA);
+  return ok;
 }
 
 bool setTapa(bool abrir) {
@@ -176,9 +232,7 @@ bool setTapa(bool abrir) {
   }
   unsigned long inicio = millis();
   while (millis() - inicio < TAPA_MS) {
-    revisarComandosDuranteMovimiento();
-    if (digitalRead(BOTON_PARO) == LOW || paroSolicitado) {
-      paroSolicitado = false;
+    if (comprobarParo()) {
       digitalWrite(TAPA_IN1, LOW);
       digitalWrite(TAPA_IN2, LOW);
       Serial.println(F("[PARO] Tapa detenida"));
@@ -199,13 +253,13 @@ bool setTapa(bool abrir) {
 void recoger() {
   Serial.println(F("[SEQ] Iniciando secuencia RECOGER"));
   esp.println("EST:RECOGIENDO");
-  setPinza(PINZA_ABIERTA);
+  if (!setPinza(PINZA_ABIERTA)) return;
   if (!mover(SUELO)) return;
-  setPinza(PINZA_CERRADA);
+  if (!setPinza(PINZA_CERRADA)) return;
   if (!mover(REPOSO) || !setTapa(true)) return;
   esp.println("EST:TAPA_ABIERTA");
   if (!mover(SOBRE_BAUL)) return;
-  setPinza(PINZA_ABIERTA);
+  if (!setPinza(PINZA_ABIERTA)) return;
   if (!mover(REPOSO) || !setTapa(false)) return;
   esp.println("OK:RECOGIDO");
   Serial.println(F("[SEQ] RECOGER completado"));
@@ -259,24 +313,30 @@ void procesar(String cmd) {
     recoger();
   }
   else if (cmd == "REPOSO" || cmd == "POS_REPOSO") {
-    mover(REPOSO);
-    setPinza(PINZA_ABIERTA);
-    esp.println("OK:REPOSO");
+    if (mover(REPOSO) && setPinza(PINZA_ABIERTA)) esp.println("OK:REPOSO");
   }
   else if (cmd == "POS_SUELO") {
-    mover(SUELO);
-    esp.println("OK:SUELO");
+    if (mover(SUELO)) esp.println("OK:SUELO");
   }
   else if (cmd == "POS_BAUL") {
-    mover(SOBRE_BAUL);
-    esp.println("OK:BAUL");
+    if (mover(SOBRE_BAUL)) esp.println("OK:BAUL");
   }
   else if (cmd == "PING") {
     esp.println("OK:PONG");
     Serial.println(F("[CMD] PONG enviado al ESP32"));
   }
+  else if (cmd == "BRAZO_SUBIR" || cmd == "BRAZO_BAJAR") {
+    int paso = cmd == "BRAZO_SUBIR" ? -8 : 8;
+    int objetivo[3] = {
+      actual[0],
+      constrain(actual[1] + paso, 30, 160),
+      constrain(actual[2] - paso, 20, 160)
+    };
+    if (mover(objetivo)) esp.println(cmd == "BRAZO_SUBIR" ? "OK:BRAZO_SUBIENDO" : "OK:BRAZO_BAJANDO");
+  }
   else if (cmd == "STOP") {
     paroSolicitado = false;
+    comandoEnCola = "";
     digitalWrite(TAPA_IN1, LOW);
     digitalWrite(TAPA_IN2, LOW);
     Serial.println(F("[PARO] Orden de paro recibida"));
@@ -285,53 +345,53 @@ void procesar(String cmd) {
 
   // --- Brazo libre ---
   else if (cmd == "BASE_IZQ") {
-    actual[0] = constrain(actual[0] + 10, 0, 180);
-    escribirServo(base, P_BASE, actual[0]);
+    if (!moverEje(base, P_BASE, 0, actual[0] + 10)) return;
     Serial.print(F("[SERVO] Base -> ")); Serial.println(actual[0]);
     esp.println("OK:BASE");
   }
   else if (cmd == "BASE_DER") {
-    actual[0] = constrain(actual[0] - 10, 0, 180);
-    escribirServo(base, P_BASE, actual[0]);
+    if (!moverEje(base, P_BASE, 0, actual[0] - 10)) return;
     Serial.print(F("[SERVO] Base -> ")); Serial.println(actual[0]);
     esp.println("OK:BASE");
   }
   else if (cmd == "HOMBRO_ARR") {
-    actual[1] = constrain(actual[1] - 8, 30, 160);
-    escribirServo(hombro, P_HOMBRO, actual[1]);
+    if (!moverEje(hombro, P_HOMBRO, 1, actual[1] - 8)) return;
     Serial.print(F("[SERVO] Hombro -> ")); Serial.println(actual[1]);
     esp.println("OK:HOMBRO");
   }
   else if (cmd == "HOMBRO_ABA") {
-    actual[1] = constrain(actual[1] + 8, 30, 160);
-    escribirServo(hombro, P_HOMBRO, actual[1]);
+    if (!moverEje(hombro, P_HOMBRO, 1, actual[1] + 8)) return;
     Serial.print(F("[SERVO] Hombro -> ")); Serial.println(actual[1]);
     esp.println("OK:HOMBRO");
   }
   else if (cmd == "CODO_ARR") {
-    actual[2] = constrain(actual[2] + 8, 20, 160);
-    escribirServo(codo, P_CODO, actual[2]);
+    if (!moverEje(codo, P_CODO, 2, actual[2] + 8)) return;
     Serial.print(F("[SERVO] Codo -> ")); Serial.println(actual[2]);
     esp.println("OK:CODO");
   }
   else if (cmd == "CODO_ABA") {
-    actual[2] = constrain(actual[2] - 8, 20, 160);
-    escribirServo(codo, P_CODO, actual[2]);
+    if (!moverEje(codo, P_CODO, 2, actual[2] - 8)) return;
     Serial.print(F("[SERVO] Codo -> ")); Serial.println(actual[2]);
     esp.println("OK:CODO");
   }
 
   // --- Pinza ---
+  else if (cmd.startsWith("PINZA_POS_")) {
+    int angulo = cmd.substring(10).toInt();
+    angulo = constrain(angulo, PINZA_CERRADA, PINZA_ABIERTA);
+    if (!setPinza(angulo)) return;
+    esp.println("OK:PINZA_POS:" + String(actual[3]));
+  }
   else if (cmd == "PINZA_ABRIR") {
-    setPinza(PINZA_ABIERTA);
+    if (!setPinza(PINZA_ABIERTA)) return;
     esp.println("OK:PINZA_ABIERTA");
   }
   else if (cmd == "PINZA_CERRAR") {
-    setPinza(PINZA_CERRADA);
+    if (!setPinza(PINZA_CERRADA)) return;
     esp.println("OK:PINZA_CERRADA");
   }
   else if (cmd == "PINZA_TOGGLE") {
-    setPinza(pinzaCerrada ? PINZA_ABIERTA : PINZA_CERRADA);
+    if (!setPinza(pinzaCerrada ? PINZA_ABIERTA : PINZA_CERRADA)) return;
     esp.println(pinzaCerrada ? "OK:PINZA_CERRADA" : "OK:PINZA_ABIERTA");
   }
 
@@ -379,6 +439,11 @@ void setup() {
 
   pinMode(BOTON_PARO, INPUT_PULLUP);
   Serial.println(F("[INIT] Boton de paro (A1 a GND) listo"));
+  cargarPosiciones();
+  Serial.print(F("[INIT] Posiciones guardadas: base=")); Serial.print(actual[0]);
+  Serial.print(F(" hombro=")); Serial.print(actual[1]);
+  Serial.print(F(" codo=")); Serial.print(actual[2]);
+  Serial.print(F(" pinza=")); Serial.println(actual[3]);
 
   // No adjuntar ni escribir servos en el arranque: se activarán al recibir una orden.
   Serial.println(F("[INIT] Servos quietos; se activan cuando llegue una orden"));

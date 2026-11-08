@@ -38,7 +38,7 @@ Una vez conectado, el robot se controla desde **internet** en **https://raulcito
 | Botón BOOT (borrar configuración) | GPIO0 | Presionar 5 s para modo AP |
 | LED de estado | GPIO2 | Azul (conectando / AP / fijo conectado) |
 
-Comandos del Arduino: `RECOGER`, `REPOSO`, `PING`, articulaciones (`BASE_IZQ`, `BASE_DER`, `HOMBRO_ARR`, `HOMBRO_ABA`, `CODO_ARR`, `CODO_ABA`), pinza, tapa y `STOP`. Telemetría de sensores: `DAT:<dist>,<pir>,<luz>`.
+Comandos del Arduino: `RECOGER`, `REPOSO`, `PING`, movimiento coordinado (`BRAZO_SUBIR`, `BRAZO_BAJAR`), articulaciones (`BASE_IZQ`, `BASE_DER`, `HOMBRO_ARR`, `HOMBRO_ABA`, `CODO_ARR`, `CODO_ABA`), pinza (`PINZA_POS_<20–90>` para su apertura gradual), tapa y `STOP`. Mantén presionados los controles de articulación para mover y suéltalos para parar. Telemetría de sensores: `DAT:<dist>,<pir>,<luz>`.
 
 ---
 

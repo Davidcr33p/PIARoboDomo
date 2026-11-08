@@ -209,9 +209,10 @@ String robotComando(const String &cmd, const char *origen) {
 
   // --- Comandos de modo libre / manual del brazo robótico (servomotores) ---
   if (cmd == "BASE_IZQ" || cmd == "BASE_DER" ||
+      cmd == "BRAZO_SUBIR" || cmd == "BRAZO_BAJAR" ||
       cmd == "HOMBRO_ARR" || cmd == "HOMBRO_ABA" ||
       cmd == "CODO_ARR" || cmd == "CODO_ABA" ||
-      cmd == "PINZA_TOGGLE" || cmd == "PINZA_ABRIR" || cmd == "PINZA_CERRAR" ||
+      cmd == "PINZA_TOGGLE" || cmd == "PINZA_ABRIR" || cmd == "PINZA_CERRAR" || cmd.startsWith("PINZA_POS_") ||
       cmd == "TAPA_TOGGLE" || cmd == "TAPA_ABRIR" || cmd == "TAPA_CERRAR" ||
       cmd == "POS_REPOSO" || cmd == "POS_SUELO" || cmd == "POS_BAUL") {
     Serial2.println(cmd);

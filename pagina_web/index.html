@@ -82,24 +82,31 @@
       <h3>Brazo robótico</h3>
       <div class="control-brazo">
         <div class="ctrl-fila">
+          <span class="ctrl-label">Brazo completo</span>
+          <div class="ctrl-btns">
+            <button type="button" class="alt chico" data-hold-cmd="BRAZO_SUBIR" title="Mantén presionado para elevar brazo y codo">▲ Elevar</button>
+            <button type="button" class="alt chico" data-hold-cmd="BRAZO_BAJAR" title="Mantén presionado para bajar brazo y codo">▼ Bajar</button>
+          </div>
+        </div>
+        <div class="ctrl-fila">
           <span class="ctrl-label">Base</span>
           <div class="ctrl-btns">
-            <button type="button" class="alt chico" data-cmd="BASE_IZQ" data-manual="1" title="Girar base a la izquierda">◀ Izq</button>
-            <button type="button" class="alt chico" data-cmd="BASE_DER" data-manual="1" title="Girar base a la derecha">Der ▶</button>
+            <button type="button" class="alt chico" data-hold-cmd="BASE_IZQ" title="Mantén presionado para girar a la izquierda">◀ Izq</button>
+            <button type="button" class="alt chico" data-hold-cmd="BASE_DER" title="Mantén presionado para girar a la derecha">Der ▶</button>
           </div>
         </div>
         <div class="ctrl-fila">
           <span class="ctrl-label">Hombro</span>
           <div class="ctrl-btns">
-            <button type="button" class="alt chico" data-cmd="HOMBRO_ARR" data-manual="1" title="Subir hombro">▲ Subir</button>
-            <button type="button" class="alt chico" data-cmd="HOMBRO_ABA" data-manual="1" title="Bajar hombro">Bajar ▼</button>
+            <button type="button" class="alt chico" data-hold-cmd="HOMBRO_ARR" title="Mantén presionado para subir">▲ Subir</button>
+            <button type="button" class="alt chico" data-hold-cmd="HOMBRO_ABA" title="Mantén presionado para bajar">Bajar ▼</button>
           </div>
         </div>
         <div class="ctrl-fila">
           <span class="ctrl-label">Codo</span>
           <div class="ctrl-btns">
-            <button type="button" class="alt chico" data-cmd="CODO_ARR" data-manual="1" title="Subir codo">▲ Subir</button>
-            <button type="button" class="alt chico" data-cmd="CODO_ABA" data-manual="1" title="Bajar codo">Bajar ▼</button>
+            <button type="button" class="alt chico" data-hold-cmd="CODO_ARR" title="Mantén presionado para subir">▲ Subir</button>
+            <button type="button" class="alt chico" data-hold-cmd="CODO_ABA" title="Mantén presionado para bajar">Bajar ▼</button>
           </div>
         </div>
         <div class="ctrl-fila">
@@ -107,6 +114,14 @@
           <div class="ctrl-btns">
             <button type="button" class="chico" data-cmd="PINZA_TOGGLE" data-manual="1" title="Alternar pinza">🤏 Pinza</button>
             <button type="button" class="alt chico" data-cmd="TAPA_TOGGLE" data-manual="1" title="Alternar tapa del baúl">📦 Tapa</button>
+          </div>
+        </div>
+        <div class="ctrl-fila">
+          <span class="ctrl-label">Apertura pinza</span>
+          <div class="pinza-ajuste">
+            <input id="pinzaAngulo" type="range" min="20" max="90" step="1" value="90" aria-label="Apertura de la pinza">
+            <output id="pinzaGrados" for="pinzaAngulo">90°</output>
+            <button type="button" class="alt chico" id="aplicarPinza">Aplicar</button>
           </div>
         </div>
         <div class="ctrl-fila">

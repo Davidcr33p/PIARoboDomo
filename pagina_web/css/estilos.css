@@ -106,3 +106,7 @@ ul.equipo .acciones { display: flex; gap: 6px; }
 .ctrl-fila:last-child { border-bottom: 0; }
 .ctrl-label { font-size: 13px; font-weight: 600; color: var(--mu); min-width: 65px; }
 .ctrl-btns { display: flex; gap: 6px; }
+.ctrl-fila [data-hold-cmd] { touch-action: none; user-select: none; }
+.pinza-ajuste { display: grid; grid-template-columns: minmax(70px, 1fr) 38px auto; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.pinza-ajuste input[type="range"] { width: 100%; margin: 0; padding: 0; accent-color: var(--g); }
+.pinza-ajuste output { color: var(--mu); font-size: 13px; text-align: right; }
