@@ -28,13 +28,13 @@ Una vez conectado, el robot se controla desde **internet** en **https://raulcito
 | Servo Pinza | Pin 9 | PWM |
 | Puente H L298N (Tapa del baúl) | ENA = 11, IN1 = 12, IN2 = 13 | Motor DC de apertura/cierre |
 | Botón físico de paro | A1 a GND | Pulsador normalmente abierto; interrumpe movimientos del brazo y detiene la tapa mientras se mantiene presionado |
-| UART hacia ESP32 (`SoftwareSerial`) | Pin 7 (RX ← TX2 ESP32), Pin 8 (TX → RX2 ESP32) | 9600 baud |
+| UART hacia ESP32 (`SoftwareSerial`) | Pin 7 (RX ← GPIO17 ESP32), Pin 8 (TX → GPIO16 ESP32, con divisor de voltaje), GND común | 9600 baud; el pin TX del Uno es de 5 V y requiere reducirse a 3.3 V antes del ESP32 |
 
 ### ESP32 (Cerebro de conectividad: Wi-Fi, Alexa y Firebase)
 
 | Elemento | Pin ESP32 | Notas |
 |---|---|---|
-| UART al Arduino (Serial2) | RX2 = GPIO16 (← pin 8 Arduino), TX2 = GPIO17 (→ pin 7 Arduino) | 9600 baud |
+| UART al Arduino (Serial2) | RX2 = GPIO16 (← pin 8 Arduino mediante divisor), TX2 = GPIO17 (→ pin 7 Arduino), GND común | 9600 baud |
 | Botón BOOT (borrar configuración) | GPIO0 | Presionar 5 s para modo AP |
 | LED de estado | GPIO2 | Azul (conectando / AP / fijo conectado) |
 

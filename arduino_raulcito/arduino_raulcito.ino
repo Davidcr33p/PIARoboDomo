@@ -51,6 +51,7 @@ const int SOBRE_BAUL[3] = { 0,  80, 100};
 int actual[4] = {90, 90, 90, PINZA_ABIERTA};
 String linea = "";
 String comandoEnCola = "";
+bool lineaCorrupta = false;
 
 const byte EEPROM_MARCA_DIR = 8;
 const byte EEPROM_MARCA = 0xA7;
@@ -128,7 +129,10 @@ void revisarComandosDuranteMovimiento() {
       String cmd = linea;
       cmd.trim();
       linea = "";
-      if (cmd == "STOP") {
+      tSensores = millis();  // deja libre SoftwareSerial después de recibir una orden
+      if (lineaCorrupta) {
+        Serial.println(F("[UART] Trama corrupta descartada"));
+      } else if (cmd == "STOP") {
         paroSolicitado = true;
         comandoEnCola = "";
         digitalWrite(TAPA_IN1, LOW);
@@ -137,8 +141,10 @@ void revisarComandosDuranteMovimiento() {
         // Conserva el siguiente comando para procesarlo al terminar la secuencia.
         if (comandoEnCola.length() == 0) comandoEnCola = cmd;
       }
-    } else if (c != '\r') {
-      linea += c;
+      lineaCorrupta = false;
+    } else if (c != '\r' && !lineaCorrupta) {
+      if (c >= 32 && c <= 126 && linea.length() < 48) linea += c;
+      else { linea = ""; lineaCorrupta = true; }
     }
   }
 }
@@ -280,7 +286,7 @@ float leerDistancia() {
 
 // Envía telemetría al ESP32 cada 300 ms e imprime en el monitor
 void enviarTelemetria() {
-  if (millis() - tSensores < 300) return;
+  if (millis() - tSensores < 1000) return;
   tSensores = millis();
 
   ultimaDist = leerDistancia();
@@ -482,6 +488,7 @@ void loop() {
   if (comandoEnCola.length() > 0) {
     String cmd = comandoEnCola;
     comandoEnCola = "";
+    tSensores = millis();
     procesar(cmd);
   }
   while (esp.available()) {
@@ -489,9 +496,13 @@ void loop() {
     if (c == '\n') {
       String cmd = linea;
       linea = "";
-      procesar(cmd);
-    } else if (c != '\r') {
-      linea += c;
+      tSensores = millis();
+      if (lineaCorrupta) Serial.println(F("[UART] Trama corrupta descartada"));
+      else procesar(cmd);
+      lineaCorrupta = false;
+    } else if (c != '\r' && !lineaCorrupta) {
+      if (c >= 32 && c <= 126 && linea.length() < 48) linea += c;
+      else { linea = ""; lineaCorrupta = true; }
     }
   }
 }
