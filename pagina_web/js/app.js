@@ -248,7 +248,7 @@ document.querySelectorAll("[data-cmd]").forEach(b => b.onclick = async () => {
   }
 });
 
-// Mantener un control de articulación genera pasos pequeños; al soltarlo se manda STOP.
+// Mantener un control de articulación genera pasos pequeños; al soltarlo se detiene ese movimiento.
 let botonMantener = null, intervaloMantener = 0, envioMantener = false;
 function mandarPasoMantenido() {
   if (!botonMantener || envioMantener) return;
@@ -270,7 +270,7 @@ function terminarMovimientoMantenido() {
   clearInterval(intervaloMantener);
   intervaloMantener = 0;
   botonMantener = null;
-  enviarComando("STOP", "Paro", true);
+  enviarComando("MOVE_STOP", "Movimiento detenido", true);
 }
 document.querySelectorAll("[data-hold-cmd]").forEach(b => {
   b.addEventListener("pointerdown", e => iniciarMovimientoMantenido(b, e));

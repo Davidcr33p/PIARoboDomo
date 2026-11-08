@@ -26,8 +26,8 @@ Una vez conectado, el robot se controla desde **internet** en **https://raulcito
 | Servo Hombro | Pin 5 | PWM |
 | Servo Codo | Pin 6 | PWM |
 | Servo Pinza | Pin 9 | PWM |
-| Puente H L298N (Tapa del baúl) | ENA = 11, IN1 = 12, IN2 = 13 | Motor DC de apertura/cierre |
-| Botón físico de paro | A1 a GND | Pulsador normalmente abierto; interrumpe movimientos del brazo y detiene la tapa mientras se mantiene presionado |
+| Puente H L298N (Tapa del baúl) | IN1 = 11, IN2 = 12, ENA fijo a 5 V | Motor DC de apertura/cierre |
+| Botón físico de paro | A1 a GND | Pulsador normalmente abierto; bloquea actuadores hasta liberar el botón y pulsar `Rearmar` |
 | UART hacia ESP32 (`SoftwareSerial`) | Pin 7 (RX ← GPIO17 ESP32), Pin 8 (TX → GPIO16 ESP32, con divisor de voltaje), GND común | 9600 baud; el pin TX del Uno es de 5 V y requiere reducirse a 3.3 V antes del ESP32 |
 
 ### ESP32 (Cerebro de conectividad: Wi-Fi, Alexa y Firebase)
@@ -38,7 +38,7 @@ Una vez conectado, el robot se controla desde **internet** en **https://raulcito
 | Botón BOOT (borrar configuración) | GPIO0 | Presionar 5 s para modo AP |
 | LED de estado | GPIO2 | Azul (conectando / AP / fijo conectado) |
 
-Comandos del Arduino: `RECOGER`, `REPOSO`, `PING`, movimiento coordinado (`BRAZO_SUBIR`, `BRAZO_BAJAR`), articulaciones (`BASE_IZQ`, `BASE_DER`, `HOMBRO_ARR`, `HOMBRO_ABA`, `CODO_ARR`, `CODO_ABA`), pinza (`PINZA_POS_<35–75>` para su apertura gradual), tapa y `STOP`. Mantén presionados los controles de articulación para mover y suéltalos para parar. Telemetría de sensores: `DAT:<dist>,<pir>,<luz>`.
+Comandos del Arduino: `RECOGER`, `REPOSO`, `PING`, movimiento coordinado (`BRAZO_SUBIR`, `BRAZO_BAJAR`), articulaciones (`BASE_IZQ`, `BASE_DER`, `HOMBRO_ARR`, `HOMBRO_ABA`, `CODO_ARR`, `CODO_ABA`), pinza (`PINZA_POS_<20–65>`), `MOVE_STOP` (detiene el movimiento actual) y paro total enclavado (`STOP`, se libera con `PARO_RESET` después de soltar el pulsador físico). La pinza usa 20° cerrada y 65° abierta. Mantén presionados los controles de articulación para mover y suéltalos para parar. Telemetría de sensores: `DAT:<dist>,<pir>,<luz>`.
 
 ---
 

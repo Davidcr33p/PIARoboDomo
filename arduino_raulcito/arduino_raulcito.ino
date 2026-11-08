@@ -31,6 +31,7 @@ const unsigned long TAPA_MS = 600; // ms que tarda en abrir/cerrar
 const byte BOTON_PARO = A1;
 bool paroFisicoActivo = false;
 bool paroSolicitado = false;
+bool paroActivo = false;
 
 // --- Sensores (alimentados a 5V nativos del Arduino Uno) ---
 const byte TRIG = 2;               // HC-SR04 Trigger
@@ -39,7 +40,7 @@ const byte PIR  = 10;              // Sensor de movimiento PIR
 const byte LDR  = A0;              // Sensor de luz LDR (analógico 0-1023)
 
 // --- Rango inicial de la pinza: ajustable desde la página ---
-const int PINZA_ABIERTA = 75, PINZA_CERRADA = 35;
+const int PINZA_ABIERTA = 65, PINZA_CERRADA = 20;
 bool pinzaCerrada = false;
 bool tapaAbierta  = false;
 
@@ -126,6 +127,24 @@ void imprimirDiagnostico() {
 // =========================================================
 // MOVIMIENTO
 // =========================================================
+void detenerActuadoresEnPosicion() {
+  digitalWrite(TAPA_IN1, LOW);
+  digitalWrite(TAPA_IN2, LOW);
+  if (base.attached()) base.write(actual[0]);
+  if (hombro.attached()) hombro.write(actual[1]);
+  if (codo.attached()) codo.write(actual[2]);
+  if (pinza.attached()) pinza.write(actual[3]);
+  guardarPosiciones();
+}
+
+void activarParoTotal() {
+  paroActivo = true;
+  paroSolicitado = false;
+  comandoEnCola = "";
+  detenerActuadoresEnPosicion();
+  Serial.println(F("[PARO TOTAL] Actuadores detenidos y movimiento bloqueado"));
+}
+
 void revisarComandosDuranteMovimiento() {
   while (esp.available()) {
     char c = esp.read();
@@ -137,13 +156,14 @@ void revisarComandosDuranteMovimiento() {
       if (lineaCorrupta) {
         Serial.println(F("[UART] Trama corrupta descartada"));
       } else if (cmd == "STOP") {
+        activarParoTotal();
+        esp.println("OK:PARADO");
+      } else if (cmd == "MOVE_STOP") {
         paroSolicitado = true;
         comandoEnCola = "";
-        digitalWrite(TAPA_IN1, LOW);
-        digitalWrite(TAPA_IN2, LOW);
       } else if (cmd.length() > 0) {
         // Conserva el siguiente comando para procesarlo al terminar la secuencia.
-        if (comandoEnCola.length() == 0) comandoEnCola = cmd;
+        if (!paroActivo && !paroSolicitado && comandoEnCola.length() == 0) comandoEnCola = cmd;
       }
       lineaCorrupta = false;
     } else if (c != '\r' && !lineaCorrupta) {
@@ -155,19 +175,21 @@ void revisarComandosDuranteMovimiento() {
 
 bool comprobarParo() {
   revisarComandosDuranteMovimiento();
-  if (digitalRead(BOTON_PARO) != LOW && !paroSolicitado) return false;
-  paroSolicitado = false;
-  comandoEnCola = "";
-  digitalWrite(TAPA_IN1, LOW);
-  digitalWrite(TAPA_IN2, LOW);
-  if (base.attached()) base.write(actual[0]);
-  if (hombro.attached()) hombro.write(actual[1]);
-  if (codo.attached()) codo.write(actual[2]);
-  if (pinza.attached()) pinza.write(actual[3]);
-  guardarPosiciones();
-  esp.println("OK:PARADO");
-  Serial.println(F("[PARO] Movimiento interrumpido; servos mantienen el ultimo angulo"));
-  return true;
+  if (paroActivo) return true;
+  if (digitalRead(BOTON_PARO) == LOW) {
+    activarParoTotal();
+    esp.println("OK:PARADO");
+    return true;
+  }
+  if (paroSolicitado) {
+    paroSolicitado = false;
+    comandoEnCola = "";
+    detenerActuadoresEnPosicion();
+    esp.println("OK:MOVIMIENTO_DETENIDO");
+    Serial.println(F("[PARO] Movimiento actual detenido"));
+    return true;
+  }
+  return false;
 }
 
 bool moverEje(Servo &servo, byte pin, byte indice, int objetivo) {
@@ -318,6 +340,38 @@ void procesar(String cmd) {
 
   Serial.print(F("[CMD] Recibido: ")); Serial.println(cmd);
 
+  if (cmd == "STOP") {
+    activarParoTotal();
+    esp.println("OK:PARADO");
+    return;
+  }
+  if (cmd == "MOVE_STOP") {
+    paroSolicitado = false;
+    detenerActuadoresEnPosicion();
+    esp.println("OK:MOVIMIENTO_DETENIDO");
+    return;
+  }
+  if (cmd == "PARO_RESET") {
+    if (digitalRead(BOTON_PARO) == LOW) {
+      esp.println("ERR:SUELTA_BOTON_PARO");
+      return;
+    }
+    paroActivo = false;
+    Serial.println(F("[PARO] Sistema rearmado"));
+    esp.println("OK:PARO_REARMADO");
+    return;
+  }
+  if (cmd == "PING") {
+    esp.println("OK:PONG");
+    Serial.println(F("[CMD] PONG enviado al ESP32"));
+    return;
+  }
+  if (paroActivo) {
+    Serial.println(F("[PARO TOTAL] Orden bloqueada hasta rearmar"));
+    esp.println("ERR:PARO_ACTIVO");
+    return;
+  }
+
   // --- Secuencias ---
   if (cmd == "RECOGER") {
     recoger();
@@ -331,10 +385,6 @@ void procesar(String cmd) {
   else if (cmd == "POS_BAUL") {
     if (mover(SOBRE_BAUL)) esp.println("OK:BAUL");
   }
-  else if (cmd == "PING") {
-    esp.println("OK:PONG");
-    Serial.println(F("[CMD] PONG enviado al ESP32"));
-  }
   else if (cmd == "BRAZO_SUBIR" || cmd == "BRAZO_BAJAR") {
     int paso = cmd == "BRAZO_SUBIR" ? -8 : 8;
     int objetivo[3] = {
@@ -344,15 +394,6 @@ void procesar(String cmd) {
     };
     if (mover(objetivo)) esp.println(cmd == "BRAZO_SUBIR" ? "OK:BRAZO_SUBIENDO" : "OK:BRAZO_BAJANDO");
   }
-  else if (cmd == "STOP") {
-    paroSolicitado = false;
-    comandoEnCola = "";
-    digitalWrite(TAPA_IN1, LOW);
-    digitalWrite(TAPA_IN2, LOW);
-    Serial.println(F("[PARO] Orden de paro recibida"));
-    esp.println("OK:PARADO");
-  }
-
   // --- Brazo libre ---
   else if (cmd == "BASE_IZQ") {
     if (!moverEje(base, P_BASE, 0, actual[0] + 10)) return;
@@ -471,11 +512,12 @@ void setup() {
 void loop() {
   bool presionado = digitalRead(BOTON_PARO) == LOW;
   if (presionado) {
-    digitalWrite(TAPA_IN1, LOW);
-    digitalWrite(TAPA_IN2, LOW);
-    if (!paroFisicoActivo) Serial.println(F("[PARO] Botón presionado; secuencia/tapa detenida"));
+    if (!paroFisicoActivo) {
+      activarParoTotal();
+      esp.println("OK:PARADO");
+    }
   } else if (paroFisicoActivo) {
-    Serial.println(F("[PARO] Botón liberado"));
+    Serial.println(F("[PARO] Botón liberado; sigue bloqueado hasta rearmar"));
   }
   paroFisicoActivo = presionado;
 

@@ -219,10 +219,12 @@ String robotComando(const String &cmd, const char *origen) {
     return "";
   }
 
-  if (cmd == "STOP") {
+  if (cmd == "STOP" || cmd == "MOVE_STOP" || cmd == "PARO_RESET") {
     Serial2.println(cmd);
-    esperandoBrazo = false;
-    registrar(origen, "paro");
+    if (cmd == "STOP") {
+      esperandoBrazo = false;
+      registrar(origen, "paro_total");
+    }
     return "";
   }
 
