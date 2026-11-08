@@ -118,7 +118,7 @@ static void hStatus() {
   d["nombre"] = cfg.nombre;
   d["uptime"] = millis() / 1000;
   d["ev"] = totalEventos;
-  d["pin_def"] = cfg.pin == PIN_DEFECTO;
+  d["pin_def"] = cfg.pin == "1234";
   JsonObject w = d["wifi"].to<JsonObject>();
   if (enAP) {
     w["ap"] = WiFi.softAPSSID();
@@ -212,7 +212,7 @@ static void hConfigGet() {
   d["id_ldr"] = cfg.idLdr;
   d["url"] = cfg.urlApi;
   d["nombre"] = cfg.nombre;
-  d["pin_def"] = cfg.pin == PIN_DEFECTO;
+  d["pin_def"] = cfg.pin == "1234";
   d["guardada"] = configHayWifi();
   enviarJson(200, d);
 }
@@ -234,6 +234,12 @@ static void hConfigPost() {
   tomar(in, "id_pir", c.idPir, false);
   tomar(in, "id_ldr", c.idLdr, false);
   if (c.nombre.isEmpty()) c.nombre = NOMBRE_DEFECTO;
+
+  // Fuerza la salida del PIN histórico 1234: no permitas conservarlo al actualizar.
+  if (cfg.pin == "1234" && (!in["pin"].is<const char *>() || in["pin"].as<String>().isEmpty())) {
+    responder(400, "Define un PIN personal de 4 dígitos para reemplazar el PIN antiguo 1234");
+    return;
+  }
 
   String err = configValidar(c);
   if (err.length()) { responder(400, err); return; }

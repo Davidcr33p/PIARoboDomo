@@ -1,6 +1,6 @@
 // ===== Página de internet (Firebase Realtime Database) =====
 // El ESP32 sube su estado cada segundo y ejecuta las órdenes que llegan de
-// https://raulcito-bracito.web.app. Todo corre en una tarea aparte.
+// https://raulcito-bracito.web.app. La escucha y el envío de estado usan tareas aparte.
 #pragma once
 #include <Arduino.h>
 

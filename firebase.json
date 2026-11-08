@@ -3,6 +3,7 @@
     "rules": "database.rules.json"
   },
   "hosting": {
+    "site": "raulcito-bracito",
     "public": "pagina_web",
     "ignore": ["**/.*"],
     "headers": [

@@ -119,7 +119,6 @@ void bleLoop() {
       pedirGuardar = false;
       prueba = pendiente;
       if (prueba.nombre.isEmpty()) prueba.nombre = NOMBRE_DEFECTO;
-      if (prueba.pin.isEmpty()) prueba.pin = PIN_DEFECTO;
       String err = configValidar(prueba);
       if (err.length()) {
         ponerEstado("ERROR:" + err);

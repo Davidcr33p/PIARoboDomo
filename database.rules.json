@@ -47,7 +47,7 @@
         "comando": {
           ".read": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
           ".write": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",
-          ".validate": "newData.hasChildren(['cmd', 'n', 'por']) && newData.child('cmd').isString() && newData.child('cmd').val().matches(/^(RECOGER|REPOSO|PING|LIMPIEZA_ON|LIMPIEZA_OFF)$/) && newData.child('n').isNumber()"
+          ".validate": "newData.hasChildren(['cmd', 'n', 'por']) && newData.child('cmd').isString() && newData.child('cmd').val().matches(/^(RECOGER|REPOSO|PING|LIMPIEZA_ON|LIMPIEZA_OFF|BASE_IZQ|BASE_DER|HOMBRO_ARR|HOMBRO_ABA|CODO_ARR|CODO_ABA|PINZA_TOGGLE|PINZA_ABRIR|PINZA_CERRAR|TAPA_TOGGLE|TAPA_ABRIR|TAPA_CERRAR|POS_REPOSO|POS_SUELO|POS_BAUL|STOP)$/) && newData.child('n').isNumber()"
         },
         "config": {
           ".read": "auth != null && root.child('equipo').child(auth.token.email.toLowerCase().replace('.', ',')).exists()",

@@ -12,6 +12,7 @@
 #include <NetworkClientSecure.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
+#include <time.h>
 
 // Datos públicos del proyecto (no son secretos: el acceso lo controlan las reglas)
 #define FB_API_KEY "AIzaSyBYNofyfHp4aISDo_5hb43kZHwGErLtNhc"
@@ -36,6 +37,7 @@ struct Respuesta  { int64_t n; bool ok; char error[48]; };
 struct EventoNube { char tipo[24]; char valor[64]; char fecha[20]; };
 static QueueHandle_t colaOrdenes = nullptr, colaRespuestas = nullptr, colaEventos = nullptr;
 static SemaphoreHandle_t candado = nullptr;
+static SemaphoreHandle_t candadoHttp = nullptr;
 static String estadoJson;                 // último estado armado por el loop
 static bool estadoNuevo = false;
 static Config configNube;                 // configuración que llegó de la página
@@ -98,6 +100,16 @@ static String errorTls(NetworkClientSecure &tls) {
   return e ? String(buf) + " (" + e + ")" : String("sin detalle");
 }
 
+static String horaLocalTexto() {
+  time_t ahora = time(nullptr);
+  if (ahora < 1700000000) return "NTP pendiente";
+  tm local;
+  localtime_r(&ahora, &local);
+  char texto[24];
+  strftime(texto, sizeof(texto), "%Y-%m-%d %H:%M:%S", &local);
+  return String(texto);
+}
+
 // ---------- HTTPS ----------
 static String urlDb(const String &ruta, bool silencioso = false) {
   return "https://" FB_HOST + ruta + ".json?auth=" + idToken + (silencioso ? "&print=silent" : "");
@@ -105,24 +117,47 @@ static String urlDb(const String &ruta, bool silencioso = false) {
 
 static int pedir(const char *metodo, const String &url, const String &cuerpo, String *respuesta,
                  const char *tipo = "application/json") {
+  if (candadoHttp) xSemaphoreTake(candadoHttp, portMAX_DELAY);
   String host = url.substring(8, url.indexOf('/', 8));
   if (host != hostRest) { tlsRest.stop(); hostRest = host; }   // no reusar la conexión de otro host
   HTTPClient http;
-  http.setReuse(true);
+  // No conservar otra sesión TLS además del stream SSE; el ESP32 necesita
+  // memoria contigua para verificar la firma RSA del certificado.
+  http.setReuse(false);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.setConnectTimeout(6000);
   http.setTimeout(6000);
-  if (!http.begin(tlsRest, url)) return -1;
+  if (!http.begin(tlsRest, url)) {
+    if (candadoHttp) xSemaphoreGive(candadoHttp);
+    return -1;
+  }
   http.addHeader("Content-Type", tipo);
   int codigoHttp = http.sendRequest(metodo, cuerpo);
+  String detalleTls = codigoHttp < 0 ? errorTls(tlsRest) : "";
   String r = codigoHttp > 0 ? http.getString() : "";
   if (respuesta) *respuesta = r;
   http.end();
+  tlsRest.stop();
+  if (candadoHttp) xSemaphoreGive(candadoHttp);
   if (codigoHttp < 200 || codigoHttp >= 300) {
     int a = url.indexOf('/', 8), b = url.indexOf('?');
     String ruta = url.substring(a, b > a ? b : url.length());   // sin la clave ni el token
-    avisar(String(metodo) + " " + ruta + " -> " +
-           (codigoHttp < 0 ? HTTPClient::errorToString(codigoHttp) + " / TLS: " + errorTls(tlsRest)
-                           : String(codigoHttp)));
+    String detalle;
+    if (codigoHttp < 0) {
+      detalle = HTTPClient::errorToString(codigoHttp) + " / TLS: " + detalleTls;
+    } else {
+      JsonDocument errorDoc;
+      if (!deserializeJson(errorDoc, r) && errorDoc["error"].is<const char *>())
+        detalle = errorDoc["error"].as<String>();
+      if (detalle.isEmpty()) {
+        detalle = r;
+        detalle.replace('\r', ' ');
+        detalle.replace('\n', ' ');
+        if (detalle.length() > 120) detalle.remove(120);
+      }
+      if (detalle.isEmpty()) detalle = String(codigoHttp);
+    }
+    avisar(String(metodo) + " " + ruta + " -> " + String(codigoHttp) + " · " + detalle);
   }
   return codigoHttp;
 }
@@ -206,31 +241,75 @@ static bool leerLinea(String &linea, unsigned long espera) {
   return false;
 }
 
-// Abre el stream; regresa el código HTTP (401 = robot sin vincular)
+// Abre el stream; sigue redirecciones (307) de Firebase y regresa el código HTTP (200 = OK, 401 = sin vincular)
 static int abrirStream() {
-  tlsSse.stop();
-  if (!tlsSse.connect(FB_HOST, 443)) {
-    avisar("No se pudo conectar a la base de datos. TLS: " + errorTls(tlsSse));
-    return -1;
-  }
-  tlsSse.print(String("GET /robot/ordenes.json?auth=") + idToken + " HTTP/1.1\r\n"
-               "Host: " FB_HOST "\r\nAccept: text/event-stream\r\n\r\n");
-  String linea;
-  if (!leerLinea(linea, 6000) || linea.length() < 12) {
-    avisar("La base de datos no respondió al abrir las órdenes (" +
-           String(tlsSse.connected() ? "sin respuesta" : "conexión cerrada") + ")");
+  String hostActual = FB_HOST;
+  String rutaActual = String("/robot/ordenes.json?auth=") + idToken;
+
+  for (int intento = 0; intento < 3; intento++) {
     tlsSse.stop();
-    return -2;
+    if (!tlsSse.connect(hostActual.c_str(), 443)) {
+      avisar("No se pudo conectar a " + hostActual + ". TLS: " + errorTls(tlsSse));
+      return -1;
+    }
+    tlsSse.print(String("GET ") + rutaActual + " HTTP/1.1\r\n"
+                 "Host: " + hostActual + "\r\n"
+                 "Accept: text/event-stream\r\n\r\n");
+
+    String linea;
+    if (!leerLinea(linea, 6000) || linea.length() < 12) {
+      avisar("La base de datos (" + hostActual + ") no respondió al abrir las órdenes (" +
+             String(tlsSse.connected() ? "sin respuesta" : "conexión cerrada") + ")");
+      tlsSse.stop();
+      return -2;
+    }
+
+    String estadoHttp = linea;
+    int codigoHttp = estadoHttp.substring(9, 12).toInt();
+
+    // Lee los encabezados y busca Location si hay redirección
+    String locationUrl = "";
+    while (leerLinea(linea, 6000) && linea.length()) {
+      if (linea.startsWith("Location:") || linea.startsWith("location:")) {
+        locationUrl = linea.substring(9);
+        locationUrl.trim();
+      }
+    }
+
+    // Redirecciones de Firebase RTDB (307 Temporary Redirect a nodo específico)
+    if (codigoHttp == 307 || codigoHttp == 302 || codigoHttp == 301) {
+      if (locationUrl.isEmpty()) {
+        avisar("Redirección " + String(codigoHttp) + " sin encabezado Location");
+        tlsSse.stop();
+        return codigoHttp;
+      }
+      int idxProto = locationUrl.indexOf("://");
+      int inicioHost = (idxProto >= 0) ? idxProto + 3 : 0;
+      int idxBarra = locationUrl.indexOf('/', inicioHost);
+      if (idxBarra >= 0) {
+        hostActual = locationUrl.substring(inicioHost, idxBarra);
+        rutaActual = locationUrl.substring(idxBarra);
+      } else {
+        hostActual = locationUrl.substring(inicioHost);
+        rutaActual = "/";
+      }
+      continue;
+    }
+
+    if (codigoHttp != 200) tlsSse.stop();
+    if (codigoHttp != 200 && codigoHttp != 401) {
+      avisar("Al abrir las órdenes la base de datos respondió: " + estadoHttp);
+    }
+
+    lineaSse = "";
+    eventoSse = "";
+    tDatoSse = millis();
+    return codigoHttp;
   }
-  String estadoHttp = linea;
-  int codigoHttp = estadoHttp.substring(9, 12).toInt();
-  while (leerLinea(linea, 6000) && linea.length()) {}   // salta los encabezados
-  if (codigoHttp != 200) tlsSse.stop();
-  if (codigoHttp != 200 && codigoHttp != 401) avisar("Al abrir las órdenes la base de datos respondió: " + estadoHttp);
-  lineaSse = "";
-  eventoSse = "";
-  tDatoSse = millis();
-  return codigoHttp;
+
+  tlsSse.stop();
+  avisar("Demasiadas redirecciones al abrir las órdenes");
+  return -3;
 }
 
 static void programarRevision() {
@@ -356,11 +435,29 @@ static void revisarConfig() {
 
 // ---------- ENVÍOS ----------
 static void enviarEstado() {
+  static unsigned long tUltimoLogEstado = 0;
+  static unsigned long tUltimoLogIntento = 0;
   String cuerpo;
   xSemaphoreTake(candado, portMAX_DELAY);
   if (estadoNuevo) { cuerpo = estadoJson; estadoNuevo = false; }
   xSemaphoreGive(candado);
-  if (cuerpo.length()) pedir("PUT", urlDb("/robot/estado", true), cuerpo, nullptr);
+  if (!cuerpo.length()) return;
+  bool registrarIntento = millis() - tUltimoLogIntento >= 15000;
+  if (registrarIntento) {
+    tUltimoLogIntento = millis();
+    String hora = horaLocalTexto();
+    Serial.printf("[NUBE] Enviando estado | hora=%s | uptime=%lu s\n",
+                  hora.c_str(), (unsigned long)(millis() / 1000));
+  }
+  int codigo = pedir("PUT", urlDb("/robot/estado", true), cuerpo, nullptr);
+  if (registrarIntento)
+    Serial.printf("[NUBE] Respuesta del estado | HTTP=%d\n", codigo);
+  if (exito(codigo) && millis() - tUltimoLogEstado >= 15000) {
+    tUltimoLogEstado = millis();
+    String hora = horaLocalTexto();
+    Serial.printf("[NUBE] Estado aceptado por Firebase | hora=%s | uptime=%lu s\n",
+                  hora.c_str(), (unsigned long)(millis() / 1000));
+  }
 }
 
 static void enviarRespuestas() {
@@ -405,6 +502,7 @@ static void enviarEventos() {
 // ---------- TAREA ----------
 static void tareaNube(void *) {
   unsigned long tReintento = 0, tSolicitud = 0, tEstado = 0;
+  bool yaConecto = false;
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(20));
     if (WiFi.status() != WL_CONNECTED) {
@@ -417,6 +515,7 @@ static void tareaNube(void *) {
 
     // Sesión (el token dura 1 h; se renueva 5 min antes)
     if (idToken.isEmpty() || (long)(millis() - tExpira) >= 0) {
+      tlsSse.stop();                      // evita solapar el TLS de autenticación con SSE
       if (!autenticar()) {
         estado = N_ERROR;
         tReintento = millis() + 30000;
@@ -425,12 +524,30 @@ static void tareaNube(void *) {
       tlsSse.stop();                      // el stream se reabre con el token nuevo
     }
 
+    // El ESP32 no tiene memoria contigua suficiente para dos sesiones TLS.
+    // Pausa SSE mientras envía el estado por REST; el siguiente ciclo lo reabre.
+    if (estado == N_CONECTADA && tEstado && millis() - tEstado >= 15000) {
+      tlsSse.stop();
+      enviarEstado();
+      tEstado = millis();
+      continue;
+    }
+
     // Stream de órdenes
     if (!tlsSse.connected()) {
       int c = abrirStream();
       if (c == 200) {
-        if (estado != N_CONECTADA) avisar("Conectada a " PAGINA_WEB);
+        if (!yaConecto) {
+          String hora = horaLocalTexto();
+          Serial.printf("[NUBE] Conectada a %s | hora=%s | uptime=%lu s\n",
+                        PAGINA_WEB, hora.c_str(), (unsigned long)(millis() / 1000));
+          yaConecto = true;
+        } else {
+          Serial.printf("[NUBE] Canal SSE reabierto | uptime=%lu s\n",
+                        (unsigned long)(millis() / 1000));
+        }
         estado = N_CONECTADA;
+        if (!tEstado) tEstado = millis();
       } else if (c == 401) {
         if (estado != N_SIN_VINCULAR)
           Serial.printf("[NUBE] Esperando vinculación desde %s · código %s\n", PAGINA_WEB, codigo);
@@ -452,13 +569,12 @@ static void tareaNube(void *) {
     if (millis() - tDatoSse > 75000) { avisar("Sin señal de la base de datos en 75 s, reconectando"); tlsSse.stop(); continue; }
     if (tRevision && (long)(millis() - tRevision) >= 0) {
       tRevision = 0;
+      tlsSse.stop();
       revisarConfig();
     }
-    if (millis() - tEstado >= 1000) {
-      tEstado = millis();
-      enviarEstado();
-    }
+    if (uxQueueMessagesWaiting(colaRespuestas)) tlsSse.stop();
     enviarRespuestas();
+    if (uxQueueMessagesWaiting(colaEventos)) tlsSse.stop();
     enviarEventos();
   }
 }
@@ -472,6 +588,7 @@ void nubeIniciar() {
   colaRespuestas = xQueueCreate(5, sizeof(Respuesta));
   colaEventos = xQueueCreate(10, sizeof(EventoNube));
   candado = xSemaphoreCreateMutex();
+  candadoHttp = xSemaphoreCreateMutex();
   estado = N_CONECTANDO;
   xTaskCreatePinnedToCore(tareaNube, "nube", 16384, nullptr, 1, nullptr, 0);
   Serial.println("Página web: " PAGINA_WEB);
@@ -493,6 +610,7 @@ void nubeLoop() {
 
   // Estado cada segundo (lo envía la tarea)
   static unsigned long tEstado = 0;
+  static unsigned long tUltimoLogLatido = 0;
   if (estado == N_CONECTADA && millis() - tEstado >= 1000) {
     tEstado = millis();
     JsonDocument d;
@@ -510,6 +628,12 @@ void nubeLoop() {
     estadoJson = s;
     estadoNuevo = true;
     xSemaphoreGive(candado);
+    if (millis() - tUltimoLogLatido >= 15000) {
+      tUltimoLogLatido = millis();
+      String hora = horaLocalTexto();
+      Serial.printf("[NUBE] Latido preparado | hora=%s | uptime=%lu s\n",
+                    hora.c_str(), (unsigned long)(millis() / 1000));
+    }
   }
 
   // Configuración nueva desde la página: se guarda y reinicia

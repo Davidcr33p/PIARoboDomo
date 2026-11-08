@@ -2,7 +2,7 @@
 #pragma once
 #include <Arduino.h>
 
-#define PIN_DEFECTO     "1234"          // PIN del panel si no se define otro
+#define PIN_DEFECTO     ""              // No se permite un PIN predeterminado
 #define NOMBRE_DEFECTO  "raulcito-01"   // identifica al robot en la BD
 
 struct Config {

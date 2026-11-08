@@ -88,6 +88,7 @@ ul.ev b{color:var(--g);font-weight:600}
 <section class="card oculto" id="vLogin">
   <h2>Panel protegido</h2>
   <p class="nota">Escribe el PIN de 4 dígitos que definiste al configurar a Raulcito.</p>
+  <p class="aviso">El panel local usa HTTP sin cifrado. Úsalo únicamente desde una red Wi-Fi privada de confianza.</p>
   <form id="fLogin">
     <input id="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="PIN">
     <button type="submit" class="full">Entrar</button>

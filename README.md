@@ -1,6 +1,6 @@
 # Raulcito bracito: ESP32 con portal web y configuración por Bluetooth
 
-PIA de Robótica y Domótica (UANL). El **ESP32** es el cerebro del robot: lee los sensores, le manda órdenes al **Arduino Uno** (brazo y tapa del baúl), se conecta a **Alexa** mediante **SinricPro** y registra eventos en la base de datos (`guardar.php`).
+PIA de Robótica y Domótica (UANL). El robot es un **brazo robótico con pinza y tapa**, sin chasis ni ruedas. El **ESP32** es el cerebro: lee sensores, manda órdenes al **Arduino Uno**, se conecta a **Alexa** mediante **SinricPro** y registra eventos en la base de datos (`guardar.php`).
 
 Este firmware ya **no tiene credenciales en el código**. El Wi-Fi, las claves de SinricPro, la URL de la API y el PIN del panel se capturan desde:
 
@@ -15,16 +15,30 @@ Una vez conectado, el robot se controla desde **internet** en **https://raulcito
 
 ## 1. Hardware y pines
 
-| Elemento | Pin ESP32 |
-|---|---|
-| HC-SR04 TRIG / ECHO | GPIO5 / GPIO18 |
-| PIR | GPIO4 |
-| LDR | GPIO36 (ADC) |
-| UART al Arduino (Serial2, 9600 baud) | RX = GPIO16 (← pin 8 Arduino), TX = GPIO17 (→ pin 7 Arduino) |
-| Botón BOOT (borrar configuración) | GPIO0 (botón de la placa) |
-| LED de estado | GPIO2 (LED azul de la placa) |
+### Arduino Uno (Hardware en tiempo real: sensores y actuadores a 5V nativos)
 
-El sketch del Arduino (`arduino_raulcito/`) no cambió. Comandos: `RECOGER`, `REPOSO`, `PING`. Respuestas: `OK:LISTO`, `OK:RECOGIDO`, `OK:REPOSO`, `OK:PONG`, `EST:RECOGIENDO`, `EST:TAPA_ABIERTA`, `ERR:<cmd>`.
+| Elemento | Pin Arduino Uno | Notas |
+|---|---|---|
+| HC-SR04 TRIG / ECHO | Pin 2 / Pin 4 | 5V nativos sin divisor resistivo |
+| PIR (Movimiento) | Pin 10 | Entrada digital |
+| LDR (Luz ambiental) | Pin A0 | Entrada analógica (0–1023) |
+| Servo Base | Pin 3 | PWM |
+| Servo Hombro | Pin 5 | PWM |
+| Servo Codo | Pin 6 | PWM |
+| Servo Pinza | Pin 9 | PWM |
+| Puente H L298N (Tapa del baúl) | ENA = 11, IN1 = 12, IN2 = 13 | Motor DC de apertura/cierre |
+| Botón físico de paro | A1 a GND | Pulsador normalmente abierto; interrumpe movimientos del brazo y detiene la tapa mientras se mantiene presionado |
+| UART hacia ESP32 (`SoftwareSerial`) | Pin 7 (RX ← TX2 ESP32), Pin 8 (TX → RX2 ESP32) | 9600 baud |
+
+### ESP32 (Cerebro de conectividad: Wi-Fi, Alexa y Firebase)
+
+| Elemento | Pin ESP32 | Notas |
+|---|---|---|
+| UART al Arduino (Serial2) | RX2 = GPIO16 (← pin 8 Arduino), TX2 = GPIO17 (→ pin 7 Arduino) | 9600 baud |
+| Botón BOOT (borrar configuración) | GPIO0 | Presionar 5 s para modo AP |
+| LED de estado | GPIO2 | Azul (conectando / AP / fijo conectado) |
+
+Comandos del Arduino: `RECOGER`, `REPOSO`, `PING`, articulaciones (`BASE_IZQ`, `BASE_DER`, `HOMBRO_ARR`, `HOMBRO_ABA`, `CODO_ARR`, `CODO_ABA`), pinza, tapa y `STOP`. Telemetría de sensores: `DAT:<dist>,<pir>,<luz>`.
 
 ---
 
@@ -101,10 +115,10 @@ Ten a la mano los datos de SinricPro (en [sinric.pro](https://sinric.pro), secci
 
 ### Opción A: portal web (Wi-Fi)
 
-1. En el celular, conéctate a la red **`Raulcito-Setup`**, contraseña **`raulcito123`**. La contraseña se cambia en `AP_PASS`, dentro del `.ino`.
+1. En el celular, conectate a **`Raulcito-Setup`** con la clave fija **`raulcito123`**.
 2. La página de configuración se abre sola (portal cautivo). Si no aparece, abre **http://192.168.4.1** en el navegador. Si el celular dice "sin internet", elige **mantener la conexión**.
 3. Toca **Buscar**, elige tu red de la lista (muestra la intensidad de la señal) o escribe el nombre a mano.
-4. Escribe la **contraseña del Wi-Fi** y define un **PIN de 4 dígitos** para el panel.
+4. Escribe la **contraseña del Wi-Fi** y define un **PIN personal de 4 dígitos** para el panel.
 5. Revisa el **nombre del robot** (por defecto `raulcito-01`) y la **URL de la API**, por ejemplo `http://192.168.1.10/raulcito/guardar.php`.
 6. Captura **APP_KEY**, **APP_SECRET** y los **3 Device IDs**. Si dejas vacío SinricPro, el robot funciona sin Alexa.
 7. Toca **Guardar y conectar**. El ESP32 guarda todo en la NVS y se reinicia. El LED parpadea rápido mientras se conecta y queda **fijo** cuando ya está conectado.
@@ -130,7 +144,7 @@ Servicio: **`7a1e0000-7261-756c-6369-746f00000000`**
 | ID_PIR | `7a1e0006-7261-756c-6369-746f00000000` | Escribir, Leer | Device ID del Motion *Movimiento* |
 | ID_LDR | `7a1e0007-7261-756c-6369-746f00000000` | Escribir, Leer | Device ID del Contact *Oscuridad* |
 | URL_API | `7a1e0008-7261-756c-6369-746f00000000` | Escribir, Leer | URL de `guardar.php` |
-| PIN *(opcional)* | `7a1e0009-7261-756c-6369-746f00000000` | Escribir | PIN del panel (si no se escribe, queda `1234`) |
+| PIN *(obligatorio)* | `7a1e0009-7261-756c-6369-746f00000000` | Escribir | PIN personal de 4 digitos para el panel |
 | NOMBRE *(opcional)* | `7a1e000a-7261-756c-6369-746f00000000` | Escribir, Leer | Nombre del robot (`raulcito-01`) |
 | **GUARDAR** | `7a1e00f0-7261-756c-6369-746f00000000` | Escribir | Escribe `1` para probar, guardar y reiniciar |
 | **ESTADO** | `7a1e00f1-7261-756c-6369-746f00000000` | Leer, Notificar | `ESPERANDO`, `CONECTANDO`, `OK:<IP>` o `ERROR:<motivo>` |
@@ -149,7 +163,7 @@ Cada característica tiene una descripción (descriptor 0x2901) con su nombre, a
    3. **APP_KEY** y **APP_SECRET**
    4. **ID_ROBOT**, **ID_PIR** e **ID_LDR**
    5. **URL_API**
-   6. *(opcional)* **PIN** y **NOMBRE**
+   6. **PIN** (obligatorio) y *(opcional)* **NOMBRE**
 6. En **GUARDAR** (`…00f0`), escribe `1` (como TEXT o como byte `01`).
 7. Observa **ESTADO**:
    - `CONECTANDO`: el ESP32 está probando la red (hasta 20 s).
@@ -200,7 +214,7 @@ Si restableces de fábrica, el robot **conserva su cuenta** y no hay que volver 
 
 ### Qué se puede hacer
 
-- **En vivo:** distancia, movimiento, luz, modo limpieza, brazo, último mensaje del Arduino, Wi-Fi y señal del robot, estado de SinricPro. Si el robot deja de mandar datos más de 8 s, la página lo marca **Desconectado** y desactiva los botones.
+- **En vivo:** distancia, movimiento, luz, modo limpieza, brazo, último mensaje del Arduino, Wi-Fi y señal del robot, estado de SinricPro. Si el robot deja de mandar datos más de 120 s, la página lo marca **Desconectado** y desactiva los botones.
 - **Botones:** *Iniciar/Detener limpieza*, *Recoger ahora*, *Reposo*, *Ping*. El robot confirma cada orden y la página muestra "Listo" o el error, por ejemplo "El brazo está ocupado". Las órdenes desde la página quedan registradas como tipo `web` y también se avisan a Alexa.
 - **Configuración:** nombre, URL de la API, APP_KEY / APP_SECRET y Device IDs. Al guardar, el robot recibe los cambios, los guarda y se reinicia (unos 20 s). Las claves **no se pueden volver a leer** desde la página: si dejas los campos vacíos, se conservan.
 - **La página manda:** si cambias algo en el panel local o por BLE, el robot lo sube a la página al reconectarse; pero si la página tiene otro valor guardado, gana el de la página.
@@ -237,7 +251,7 @@ Sirve en la misma red Wi-Fi del robot, aunque no haya internet.
   Panel: http://raulcito.local  o  http://192.168.1.50
   ```
   Algunos Android antiguos no resuelven `.local`. En ese caso usa la IP.
-- **PIN de 4 dígitos.** El que definiste en el portal (`1234` si se configuró por BLE sin PIN; el panel avisa para que lo cambies). Después de **5 intentos fallidos** hay un bloqueo de **30 s**.
+- **PIN personal de 4 dígitos, obligatorio.** No hay PIN predeterminado. Después de **5 intentos fallidos** hay un bloqueo de **30 s**.
 - **En vivo** (se refresca cada 1 s):
   - Distancia en cm, movimiento (PIR) y luz (0–4095, claro u oscuro).
   - Wi-Fi (red, señal en dBm, IP), estado de SinricPro, hora.
@@ -335,10 +349,12 @@ curl -X POST -H "X-PIN: 4821" -H "Content-Type: application/json" \
 
 - **Página de internet:** solo entran cuentas cuyo correo esté en el Equipo (sin verificación de correo; ver la nota de la sección 4). Los administradores agregan o quitan gente y vinculan el robot. Las reglas de Firebase (`database.rules.json`) se aplican en el servidor, así que no se pueden saltar desde el navegador.
 - **Cuenta del robot:** el robot la crea solo, con una contraseña aleatoria guardada en su NVS (namespace `nube`), y solo funciona después de que un administrador la vincula. Las conexiones a Firebase usan HTTPS con verificación de certificados (`useBuiltinCACertBundle`).
-- **Ninguna contraseña** sale por `/api/config` ni se imprime en el Monitor Serie. Tampoco se imprimen la APP_KEY, el APP_SECRET, el PIN, la contraseña del AP ni la de la cuenta del robot.
+- No se imprimen las contrasenas de las redes Wi-Fi guardadas, APP_KEY, APP_SECRET ni el PIN del panel. La red temporal `Raulcito-Setup` usa la clave fija `raulcito123`.
 - La librería SinricPro imprime el APP_SECRET si tiene un formato inválido. Por eso el firmware **valida el formato antes** de llamar a `SinricPro.begin()`; si no es válido, desactiva Alexa sin imprimir nada.
 - Las credenciales se guardan en la NVS del ESP32 (namespace `raulcito`). El firmware usa `WiFi.persistent(false)` para que no queden copias en la NVS interna del Wi-Fi.
-- El PIN de 4 dígitos tiene bloqueo tras 5 intentos fallidos. El panel usa HTTP sin cifrar, así que **úsalo solo en tu red local**.
+- El PIN de 4 digitos tiene bloqueo tras 5 intentos fallidos. El panel local usa HTTP, por lo que el PIN y los datos no viajan cifrados: usalo solo en una red Wi-Fi privada de confianza. Para configurar, conecta el celular a `Raulcito-Setup` con la clave fija `raulcito123`.
+- La contraseña de `Raulcito-Setup` es fija: `raulcito123`.
+- Los equipos que aún tengan el PIN antiguo `1234` arrancarán en modo configuración hasta que se guarde un PIN propio. No se borra la red guardada.
 - El servicio BLE no pide emparejamiento. Por eso **solo está activo en modo configuración**, y GUARDAR solo guarda si la red Wi-Fi realmente conecta.
 
 ---

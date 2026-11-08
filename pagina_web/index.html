@@ -77,6 +77,47 @@
       </div>
     </section>
 
+    <section class="card" id="cControlManual">
+      <h2>Modo libre / Control virtual</h2>
+      <h3>Brazo robótico</h3>
+      <div class="control-brazo">
+        <div class="ctrl-fila">
+          <span class="ctrl-label">Base</span>
+          <div class="ctrl-btns">
+            <button type="button" class="alt chico" data-cmd="BASE_IZQ" data-manual="1" title="Girar base a la izquierda">◀ Izq</button>
+            <button type="button" class="alt chico" data-cmd="BASE_DER" data-manual="1" title="Girar base a la derecha">Der ▶</button>
+          </div>
+        </div>
+        <div class="ctrl-fila">
+          <span class="ctrl-label">Hombro</span>
+          <div class="ctrl-btns">
+            <button type="button" class="alt chico" data-cmd="HOMBRO_ARR" data-manual="1" title="Subir hombro">▲ Subir</button>
+            <button type="button" class="alt chico" data-cmd="HOMBRO_ABA" data-manual="1" title="Bajar hombro">Bajar ▼</button>
+          </div>
+        </div>
+        <div class="ctrl-fila">
+          <span class="ctrl-label">Codo</span>
+          <div class="ctrl-btns">
+            <button type="button" class="alt chico" data-cmd="CODO_ARR" data-manual="1" title="Subir codo">▲ Subir</button>
+            <button type="button" class="alt chico" data-cmd="CODO_ABA" data-manual="1" title="Bajar codo">Bajar ▼</button>
+          </div>
+        </div>
+        <div class="ctrl-fila">
+          <span class="ctrl-label">Herramientas</span>
+          <div class="ctrl-btns">
+            <button type="button" class="chico" data-cmd="PINZA_TOGGLE" data-manual="1" title="Alternar pinza">🤏 Pinza</button>
+            <button type="button" class="alt chico" data-cmd="TAPA_TOGGLE" data-manual="1" title="Alternar tapa del baúl">📦 Tapa</button>
+          </div>
+        </div>
+        <div class="ctrl-fila">
+          <span class="ctrl-label">Paro</span>
+          <div class="ctrl-btns">
+            <button type="button" class="alt chico" data-cmd="STOP" data-manual="1" title="Interrumpir movimiento, secuencia o tapa">⏹ Paro</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="card">
       <h2>Conexión del robot</h2>
       <div id="conex"></div>

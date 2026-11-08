@@ -100,3 +100,9 @@ ul.equipo .acciones { display: flex; gap: 6px; }
   max-width: calc(100% - 32px);
 }
 #toast.ver { opacity: 1; transform: translate(-50%, 0); }
+
+/* Control manual del brazo */
+.ctrl-fila { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #f3eaea; gap: 8px; }
+.ctrl-fila:last-child { border-bottom: 0; }
+.ctrl-label { font-size: 13px; font-weight: 600; color: var(--mu); min-width: 65px; }
+.ctrl-btns { display: flex; gap: 6px; }

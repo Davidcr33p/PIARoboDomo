@@ -140,7 +140,14 @@ function arrancarPanel() {
 }
 
 // ---------- Estado del robot ----------
-function enLinea() { return !!(dispositivo && estado && estado.ts && ahora() - estado.ts < 8000); }
+function enLinea() {
+  if (!dispositivo || !estado || !estado.ts) return false;
+  // ahora() = Date.now() + offset (offset llega de .info/serverTimeOffset)
+  // El ESP32 puede tardar hasta ~76 s entre actualizaciones aceptadas por Firebase.
+  // Damos margen hasta 120 s para no marcarlo offline entre latidos.
+  const dif = ahora() - estado.ts;
+  return dif < 120000 && dif > -60000;
+}
 
 function pintarEstado() {
   if (!panelListo) return;
@@ -204,20 +211,41 @@ function pintarEventos(v) {
 }
 
 // ---------- Comandos ----------
-document.querySelectorAll("[data-cmd]").forEach(b => b.onclick = async () => {
+async function enviarComando(cmd, texto = cmd, esManual = false) {
   if (!enLinea()) return toast("El robot está desconectado.");
-  const cmd = b.dataset.cmd, texto = b.textContent, n = Date.now();
-  b.disabled = true; b.dataset.enviando = "1";
+  const n = Date.now();
   const respuesta = new Promise(res => {
     esperando.set(n, res);
-    setTimeout(() => { if (esperando.delete(n)) res(null); }, 8000);
+    setTimeout(() => { if (esperando.delete(n)) res(null); }, esManual ? 3000 : 8000);
   });
   try {
     await set(ref(db, "robot/ordenes/comando"), { cmd, n, por: usuario.email, ts: serverTimestamp() });
     const r = await respuesta;
-    toast(!r ? "El robot no respondió." : r.ok ? "Listo: " + texto : r.error || "Error");
-  } catch (x) { esperando.delete(n); toast("No se pudo enviar: " + mensaje(x)); }
-  finally { delete b.dataset.enviando; b.disabled = !enLinea(); }
+    if (!esManual) {
+      toast(!r ? "El robot no respondió." : r.ok ? "Listo: " + texto : r.error || "Error");
+    } else if (r && !r.ok) {
+      toast(r.error || "Error");
+    }
+  } catch (x) {
+    esperando.delete(n);
+    toast("No se pudo enviar: " + mensaje(x));
+  }
+}
+
+document.querySelectorAll("[data-cmd]").forEach(b => b.onclick = async () => {
+  const esManual = !!b.dataset.manual;
+  const cmd = b.dataset.cmd, texto = b.textContent;
+  if (!esManual) {
+    b.disabled = true; b.dataset.enviando = "1";
+  }
+  try {
+    await enviarComando(cmd, texto, esManual);
+  } finally {
+    if (!esManual) {
+      delete b.dataset.enviando;
+      b.disabled = !enLinea();
+    }
+  }
 });
 
 // ---------- Vinculación (administradores) ----------
